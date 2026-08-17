@@ -35,8 +35,10 @@ export function drawGrokBot(
   ctx.clearRect(0, 0, dpr, dpr);
   ctx.save();
   ctx.translate(dpr / 2, dpr / 2);
-  const scale = (dpr * (opts?.faceScale ?? 0.31)) / FACE_R;
+  const faceScale = opts?.faceScale ?? 0.31;
+  const scale = (dpr * faceScale) / FACE_R;
   ctx.scale(scale, scale);
+  if (faceScale > 0.33) ctx.translate(0, -FACE_R * 0.18);
 
   const face = resolveFaceHex(engine.faceColor);
   const eyeFill = theme.eye;
@@ -67,21 +69,7 @@ export function drawGrokBot(
 
   const hideBody = dotsW > 0.45;
   if (!hideBody && faceW > 0.08) {
-    ctx.save();
-    ctx.globalAlpha = 0.16 * faceW * bodyScale * (1 - hop * 0.7);
-    ctx.fillStyle = "#1c1a16";
-    ctx.beginPath();
-    ctx.ellipse(
-      4 + lookX * 12 - hopX * FACE_R * 0.55,
-      FACE_R * 0.86 * bodyScale + 22 + lookY * 6 + hop * FACE_R * 0.92,
-      72 * bodyScale * (1 + hop * 0.2),
-      11 * bodyScale * (1 - hop * 0.25),
-      0,
-      0,
-      Math.PI * 2,
-    );
-    ctx.fill();
-    ctx.restore();
+    drawContactShadow(ctx, faceW, bodyScale, hop, hopX, lookX, lookY);
   }
 
   ctx.save();
@@ -137,6 +125,31 @@ export function drawGrokBot(
 
   if (engine.debug) drawDebug(ctx, engine, theme);
 
+  ctx.restore();
+}
+
+function drawContactShadow(
+  ctx: CanvasRenderingContext2D,
+  faceW: number,
+  bodyScale: number,
+  hop: number,
+  hopX: number,
+  lookX: number,
+  lookY: number,
+) {
+  const fade = faceW * bodyScale * (1 - hop * 0.55);
+  const x = lookX * 10 - hopX * FACE_R * 0.35;
+  const y = FACE_R * 0.93 * bodyScale + 8 + lookY * 4 + hop * FACE_R * 0.92;
+  ctx.save();
+  ctx.fillStyle = "#0c0b09";
+  ctx.globalAlpha = 0.16 * fade;
+  ctx.beginPath();
+  ctx.ellipse(x, y + 7, 86 * bodyScale, 16 * bodyScale, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 0.28 * fade;
+  ctx.beginPath();
+  ctx.ellipse(x, y + 2, 54 * bodyScale, 9 * bodyScale, 0, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
 }
 

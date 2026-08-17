@@ -103,7 +103,7 @@ function setColor(hex: string) {
 const tick = (now: number) => {
   engine.tick(now);
   const ctx = canvas.getContext("2d");
-  if (ctx) drawGrokBot(ctx, engine, canvas.width || 480, THEME, { faceScale: 0.5 });
+  if (ctx) drawGrokBot(ctx, engine, canvas.width || 480, THEME, { faceScale: 0.44 });
   requestAnimationFrame(tick);
 };
 

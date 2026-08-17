@@ -1471,8 +1471,10 @@
     ctx.clearRect(0, 0, dpr, dpr);
     ctx.save();
     ctx.translate(dpr / 2, dpr / 2);
-    const scale = dpr * (opts?.faceScale ?? 0.31) / FACE_R;
+    const faceScale = opts?.faceScale ?? 0.31;
+    const scale = dpr * faceScale / FACE_R;
     ctx.scale(scale, scale);
+    if (faceScale > 0.33) ctx.translate(0, -FACE_R * 0.18);
     const face = resolveFaceHex(engine2.faceColor);
     const eyeFill = theme.eye;
     const spin = engine2.t.spin.value;
@@ -1497,21 +1499,7 @@
     if (streakW > 0.02) drawStreaks(ctx, engine2, streakW, -1);
     const hideBody = dotsW > 0.45;
     if (!hideBody && faceW > 0.08) {
-      ctx.save();
-      ctx.globalAlpha = 0.16 * faceW * bodyScale * (1 - hop * 0.7);
-      ctx.fillStyle = "#1c1a16";
-      ctx.beginPath();
-      ctx.ellipse(
-        4 + lookX * 12 - hopX * FACE_R * 0.55,
-        FACE_R * 0.86 * bodyScale + 22 + lookY * 6 + hop * FACE_R * 0.92,
-        72 * bodyScale * (1 + hop * 0.2),
-        11 * bodyScale * (1 - hop * 0.25),
-        0,
-        0,
-        Math.PI * 2
-      );
-      ctx.fill();
-      ctx.restore();
+      drawContactShadow(ctx, faceW, bodyScale, hop, hopX, lookX, lookY);
     }
     ctx.save();
     ctx.translate(lookX * 4, lookY * 3.5);
@@ -1558,6 +1546,22 @@
     if (streakW > 0.02) drawStreaks(ctx, engine2, streakW, 1);
     drawSparks(ctx, engine2);
     if (engine2.debug) drawDebug(ctx, engine2, theme);
+    ctx.restore();
+  }
+  function drawContactShadow(ctx, faceW, bodyScale, hop, hopX, lookX, lookY) {
+    const fade = faceW * bodyScale * (1 - hop * 0.55);
+    const x = lookX * 10 - hopX * FACE_R * 0.35;
+    const y = FACE_R * 0.93 * bodyScale + 8 + lookY * 4 + hop * FACE_R * 0.92;
+    ctx.save();
+    ctx.fillStyle = "#0c0b09";
+    ctx.globalAlpha = 0.16 * fade;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 7, 86 * bodyScale, 16 * bodyScale, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.28 * fade;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 2, 54 * bodyScale, 9 * bodyScale, 0, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
   function shadeSphere(ctx, body, faceHex2, lookX, lookY) {
@@ -1861,7 +1865,7 @@
   var tick = (now) => {
     engine.tick(now);
     const ctx = canvas.getContext("2d");
-    if (ctx) drawGrokBot(ctx, engine, canvas.width || 480, THEME, { faceScale: 0.5 });
+    if (ctx) drawGrokBot(ctx, engine, canvas.width || 480, THEME, { faceScale: 0.44 });
     requestAnimationFrame(tick);
   };
   new ResizeObserver(sizeCanvas).observe(wrap);
