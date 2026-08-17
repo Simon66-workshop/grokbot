@@ -110,7 +110,6 @@ ipcMain.on("pet-click-through", (event, ignore) => {
 ipcMain.on("pet-dock", () => {
   /* panel lives inside the fixed stage; size does not change */
 });
-});
 
 if (process.platform !== "darwin") {
   app.commandLine.appendSwitch("enable-transparent-visuals");
