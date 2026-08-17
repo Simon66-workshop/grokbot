@@ -17,6 +17,24 @@ import { bodyForShape } from "./shapes";
 import { exclaimStem, stadiumPath } from "./paths";
 import { DEMO_CUES } from "./demo";
 
+/** Child-like ball hop: crouch, three quick bounces, pause, one big jump. */
+const BOUNCE_CUES: { at: number; hop: number; squash: number; tilt: number }[] = [
+  { at: 0.0, hop: 0, squash: 0.8, tilt: 0 },
+  { at: 0.1, hop: 0.56, squash: 1.16, tilt: -0.06 },
+  { at: 0.36, hop: 0, squash: 0.7, tilt: 0.02 },
+  { at: 0.46, hop: 0.3, squash: 1.1, tilt: 0.05 },
+  { at: 0.64, hop: 0, squash: 0.76, tilt: -0.02 },
+  { at: 0.72, hop: 0.22, squash: 1.08, tilt: -0.04 },
+  { at: 0.86, hop: 0, squash: 0.84, tilt: 0 },
+  { at: 1.04, hop: 0, squash: 1, tilt: 0 },
+  { at: 1.26, hop: 0, squash: 0.74, tilt: 0.03 },
+  { at: 1.38, hop: 0.8, squash: 1.2, tilt: -0.08 },
+  { at: 1.8, hop: 0, squash: 0.66, tilt: 0.04 },
+  { at: 1.92, hop: 0.14, squash: 1.06, tilt: 0 },
+  { at: 2.06, hop: 0, squash: 0.9, tilt: 0 },
+  { at: 2.2, hop: 0, squash: 1, tilt: 0 },
+];
+
 export type Spark = {
   x: number;
   y: number;
@@ -61,6 +79,8 @@ type Targets = {
   flyX: number;
   flyY: number;
   spin: number;
+  hop: number;
+  squash: number;
 };
 
 function eyeSpring(p: EyeParams) {
@@ -145,6 +165,8 @@ export class GrokBotEngine {
   private nextBlink = 3.2;
   private stateUntil = 0;
   private lookPhase = 0;
+  private bounceT0 = 0;
+  private bounceHold = false;
 
   constructor() {
     const rest = getExpression(0);
@@ -171,6 +193,8 @@ export class GrokBotEngine {
       flyX: springOf(0),
       flyY: springOf(0),
       spin: springOf(0),
+      hop: springOf(0),
+      squash: springOf(1),
     };
     this.seedOrbits();
   }
@@ -194,6 +218,8 @@ export class GrokBotEngine {
       flyX: 0,
       flyY: 0,
       spin: 0,
+      hop: 0,
+      squash: 1,
     };
   }
 
@@ -313,6 +339,9 @@ export class GrokBotEngine {
     this.tgt.spin = 0;
     this.tgt.gazeX = 0;
     this.tgt.gazeY = 0;
+    this.tgt.hop = 0;
+    this.tgt.squash = 1;
+    this.bounceHold = false;
     this.nextBlink = this.elapsed + 2.4 + Math.random() * 2.6;
   }
 
@@ -443,6 +472,21 @@ export class GrokBotEngine {
         this.tgt.bodyScale = 1;
         this.stateUntil = this.elapsed + 4;
         break;
+      case "bounce":
+        this.tgt.faceW = 1;
+        this.tgt.dotsW = 0;
+        this.tgt.exclaimW = 0;
+        this.tgt.orbitW = 0;
+        this.tgt.streakW = 0;
+        this.tgt.eyeAlpha = 1;
+        this.tgt.bodyScale = 1;
+        this.tgt.flyX = 0;
+        this.tgt.flyY = 0;
+        this.expression = 5;
+        this.bounceT0 = this.elapsed;
+        this.bounceHold = true;
+        this.stateUntil = Number.POSITIVE_INFINITY;
+        break;
     }
   }
 
@@ -519,7 +563,8 @@ export class GrokBotEngine {
     }
 
     (Object.keys(this.tgt) as (keyof Targets)[]).forEach((k) => {
-      stepSpring(this.t[k], this.tgt[k], dt, k === "blink" ? speed * 1.8 : speed);
+      const boost = k === "blink" || k === "hop" || k === "squash" ? 2.15 : 1;
+      stepSpring(this.t[k], this.tgt[k], dt, speed * boost);
     });
 
     for (const o of this.orbits) {
@@ -603,6 +648,10 @@ export class GrokBotEngine {
       this.burstSparks(2);
     }
 
+    if (this.state === "bounce") {
+      this.tickBounce();
+    }
+
     if (
       this.autoIdle &&
       this.state === "idle" &&
@@ -610,10 +659,14 @@ export class GrokBotEngine {
       this.elapsed > this.nextBlink
     ) {
       const roll = Math.random();
-      if (roll < 0.22) {
+      if (roll < 0.16) {
+        this.play("bounce");
+        this.bounceHold = false;
+        this.stateUntil = this.elapsed + 2.35;
+      } else if (roll < 0.34) {
         this.play("look");
         this.stateUntil = this.elapsed + 1.1;
-      } else if (roll < 0.38) {
+      } else if (roll < 0.5) {
         this.blink();
         this.nextBlink = this.elapsed + 0.42;
       } else {
@@ -623,13 +676,16 @@ export class GrokBotEngine {
 
     if (this.state !== "idle" && this.state !== "sleep" && this.state !== "blink") {
       if (this.stateUntil && this.elapsed > this.stateUntil && !this.demoPlaying) {
-        if (this.state === "exclaim-fly" || this.state === "trail") {
+        if (this.state === "exclaim-fly" || this.state === "trail" || this.state === "bounce") {
           this.tgt.flyX = 0;
           this.tgt.flyY = 0;
+          this.tgt.hop = 0;
+          this.tgt.squash = 1;
           this.tgt.bodyScale = 1;
           this.tgt.eyeAlpha = 1;
           this.tgt.faceW = 1;
           this.tgt.exclaimW = 0;
+          this.expression = 0;
           this.state = "idle";
         } else if (this.state === "loading" || this.state === "shrink") {
           /* hold until user changes */
@@ -638,6 +694,24 @@ export class GrokBotEngine {
         }
       }
     }
+  }
+
+  private tickBounce() {
+    const CYCLE = 2.32;
+    let t = this.elapsed - this.bounceT0;
+    if (this.bounceHold && t > CYCLE) {
+      this.bounceT0 = this.elapsed;
+      t = 0;
+    }
+    const cues = BOUNCE_CUES;
+    let cue = cues[0]!;
+    for (const c of cues) {
+      if (c.at <= t) cue = c;
+    }
+    this.tgt.hop = cue.hop;
+    this.tgt.squash = cue.squash;
+    this.tgt.yaw = cue.tilt;
+    this.tgt.bodyScale = 1;
   }
 
   private tickGaze() {

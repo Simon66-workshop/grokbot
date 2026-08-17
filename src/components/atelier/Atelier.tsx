@@ -36,6 +36,7 @@ const STATES: { id: StateId; label: string; note: string }[] = [
   { id: "sleep", label: "Sleep", note: "Lids shut" },
   { id: "trail", label: "Trail", note: "Motion ribbon" },
   { id: "think", label: "Think", note: "Face + orbits" },
+  { id: "bounce", label: "Bounce", note: "Kid-like ball hops" },
 ];
 
 function AuthSlot() {

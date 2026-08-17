@@ -594,6 +594,22 @@
   ];
 
   // src/lib/grokbot/engine.ts
+  var BOUNCE_CUES = [
+    { at: 0, hop: 0, squash: 0.8, tilt: 0 },
+    { at: 0.1, hop: 0.56, squash: 1.16, tilt: -0.06 },
+    { at: 0.36, hop: 0, squash: 0.7, tilt: 0.02 },
+    { at: 0.46, hop: 0.3, squash: 1.1, tilt: 0.05 },
+    { at: 0.64, hop: 0, squash: 0.76, tilt: -0.02 },
+    { at: 0.72, hop: 0.22, squash: 1.08, tilt: -0.04 },
+    { at: 0.86, hop: 0, squash: 0.84, tilt: 0 },
+    { at: 1.04, hop: 0, squash: 1, tilt: 0 },
+    { at: 1.26, hop: 0, squash: 0.74, tilt: 0.03 },
+    { at: 1.38, hop: 0.8, squash: 1.2, tilt: -0.08 },
+    { at: 1.8, hop: 0, squash: 0.66, tilt: 0.04 },
+    { at: 1.92, hop: 0.14, squash: 1.06, tilt: 0 },
+    { at: 2.06, hop: 0, squash: 0.9, tilt: 0 },
+    { at: 2.2, hop: 0, squash: 1, tilt: 0 }
+  ];
   function eyeSpring(p) {
     return {
       x: springOf(p.x),
@@ -665,6 +681,8 @@
     nextBlink = 3.2;
     stateUntil = 0;
     lookPhase = 0;
+    bounceT0 = 0;
+    bounceHold = false;
     constructor() {
       const rest = getExpression(0);
       this.left = eyeSpring(rest.left);
@@ -689,7 +707,9 @@
         blink: springOf(1),
         flyX: springOf(0),
         flyY: springOf(0),
-        spin: springOf(0)
+        spin: springOf(0),
+        hop: springOf(0),
+        squash: springOf(1)
       };
       this.seedOrbits();
     }
@@ -711,7 +731,9 @@
         blink: 1,
         flyX: 0,
         flyY: 0,
-        spin: 0
+        spin: 0,
+        hop: 0,
+        squash: 1
       };
     }
     seedOrbits() {
@@ -813,6 +835,9 @@
       this.tgt.spin = 0;
       this.tgt.gazeX = 0;
       this.tgt.gazeY = 0;
+      this.tgt.hop = 0;
+      this.tgt.squash = 1;
+      this.bounceHold = false;
       this.nextBlink = this.elapsed + 2.4 + Math.random() * 2.6;
     }
     play(state) {
@@ -941,6 +966,21 @@
           this.tgt.bodyScale = 1;
           this.stateUntil = this.elapsed + 4;
           break;
+        case "bounce":
+          this.tgt.faceW = 1;
+          this.tgt.dotsW = 0;
+          this.tgt.exclaimW = 0;
+          this.tgt.orbitW = 0;
+          this.tgt.streakW = 0;
+          this.tgt.eyeAlpha = 1;
+          this.tgt.bodyScale = 1;
+          this.tgt.flyX = 0;
+          this.tgt.flyY = 0;
+          this.expression = 5;
+          this.bounceT0 = this.elapsed;
+          this.bounceHold = true;
+          this.stateUntil = Number.POSITIVE_INFINITY;
+          break;
       }
     }
     playDemo() {
@@ -1008,7 +1048,8 @@
         stepSpring(c.y, p.y, dt, bodySpeed);
       }
       Object.keys(this.tgt).forEach((k) => {
-        stepSpring(this.t[k], this.tgt[k], dt, k === "blink" ? speed * 1.8 : speed);
+        const boost = k === "blink" || k === "hop" || k === "squash" ? 2.15 : 1;
+        stepSpring(this.t[k], this.tgt[k], dt, speed * boost);
       });
       for (const o of this.orbits) {
         o.phase += o.speed * dt;
@@ -1078,12 +1119,19 @@
       if (this.state === "sparkle" && Math.random() < dt * 8) {
         this.burstSparks(2);
       }
+      if (this.state === "bounce") {
+        this.tickBounce();
+      }
       if (this.autoIdle && this.state === "idle" && !this.demoPlaying && this.elapsed > this.nextBlink) {
         const roll = Math.random();
-        if (roll < 0.22) {
+        if (roll < 0.16) {
+          this.play("bounce");
+          this.bounceHold = false;
+          this.stateUntil = this.elapsed + 2.35;
+        } else if (roll < 0.34) {
           this.play("look");
           this.stateUntil = this.elapsed + 1.1;
-        } else if (roll < 0.38) {
+        } else if (roll < 0.5) {
           this.blink();
           this.nextBlink = this.elapsed + 0.42;
         } else {
@@ -1092,19 +1140,39 @@
       }
       if (this.state !== "idle" && this.state !== "sleep" && this.state !== "blink") {
         if (this.stateUntil && this.elapsed > this.stateUntil && !this.demoPlaying) {
-          if (this.state === "exclaim-fly" || this.state === "trail") {
+          if (this.state === "exclaim-fly" || this.state === "trail" || this.state === "bounce") {
             this.tgt.flyX = 0;
             this.tgt.flyY = 0;
+            this.tgt.hop = 0;
+            this.tgt.squash = 1;
             this.tgt.bodyScale = 1;
             this.tgt.eyeAlpha = 1;
             this.tgt.faceW = 1;
             this.tgt.exclaimW = 0;
+            this.expression = 0;
             this.state = "idle";
           } else if (this.state === "loading" || this.state === "shrink") {
           } else if (this.state === "orbits" || this.state === "think" || this.state === "streaks") {
           }
         }
       }
+    }
+    tickBounce() {
+      const CYCLE = 2.32;
+      let t = this.elapsed - this.bounceT0;
+      if (this.bounceHold && t > CYCLE) {
+        this.bounceT0 = this.elapsed;
+        t = 0;
+      }
+      const cues = BOUNCE_CUES;
+      let cue = cues[0];
+      for (const c of cues) {
+        if (c.at <= t) cue = c;
+      }
+      this.tgt.hop = cue.hop;
+      this.tgt.squash = cue.squash;
+      this.tgt.yaw = cue.tilt;
+      this.tgt.bodyScale = 1;
     }
     tickGaze() {
       if (this.followPointer && this.pointer.active && !this.demoPlaying) {
@@ -1344,7 +1412,9 @@
     if (spin) ctx.rotate(spin * Math.sin(performance.now() / 900) * 0.35);
     const flyX = engine2.t.flyX.value * FACE_R * 1.45;
     const flyY = engine2.t.flyY.value * FACE_R * 1.45;
-    ctx.translate(flyX, flyY);
+    const hop = engine2.t.hop.value;
+    const squash = Math.max(0.45, engine2.t.squash.value);
+    ctx.translate(flyX, flyY - hop * FACE_R * 0.92);
     const orbitW = engine2.t.orbitW.value;
     const streakW = engine2.t.streakW.value;
     const bodyScale = Math.max(0.04, engine2.t.bodyScale.value);
@@ -1360,14 +1430,14 @@
     const hideBody = dotsW > 0.45;
     if (!hideBody && faceW > 0.08) {
       ctx.save();
-      ctx.globalAlpha = 0.16 * faceW * bodyScale;
+      ctx.globalAlpha = 0.16 * faceW * bodyScale * (1 - hop * 0.7);
       ctx.fillStyle = "#1c1a16";
       ctx.beginPath();
       ctx.ellipse(
         4 + lookX * 12,
-        FACE_R * 0.86 * bodyScale + 22 + lookY * 6,
-        72 * bodyScale,
-        11 * bodyScale,
+        FACE_R * 0.86 * bodyScale + 22 + lookY * 6 + hop * FACE_R * 0.92,
+        72 * bodyScale * (1 + hop * 0.2),
+        11 * bodyScale * (1 - hop * 0.25),
         0,
         0,
         Math.PI * 2
@@ -1382,7 +1452,7 @@
       1 + lookX * lookX * 0.03 - lookY * lookY * 0.015,
       1 + lookY * lookY * 0.025 - lookX * lookX * 0.018
     );
-    ctx.scale(bodyScale, bodyScale);
+    ctx.scale(bodyScale * (1 / squash), bodyScale * squash);
     const body = engine2.bodyPoints();
     if (!hideBody && (faceW > 0.02 || exclaimW > 0.02)) {
       ctx.globalAlpha = Math.max(faceW, exclaimW);
@@ -1722,6 +1792,7 @@
     think: () => engine.play("loading"),
     wow: () => engine.play("exclaim"),
     orbit: () => engine.play("orbits"),
+    bounce: () => engine.play("bounce"),
     tour: () => engine.playDemo()
   };
   document.querySelectorAll("[data-act]").forEach((btn) => {

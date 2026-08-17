@@ -45,7 +45,9 @@ export function drawGrokBot(
 
   const flyX = engine.t.flyX.value * FACE_R * 1.45;
   const flyY = engine.t.flyY.value * FACE_R * 1.45;
-  ctx.translate(flyX, flyY);
+  const hop = engine.t.hop.value;
+  const squash = Math.max(0.45, engine.t.squash.value);
+  ctx.translate(flyX, flyY - hop * FACE_R * 0.92);
 
   const orbitW = engine.t.orbitW.value;
   const streakW = engine.t.streakW.value;
@@ -65,14 +67,14 @@ export function drawGrokBot(
   const hideBody = dotsW > 0.45;
   if (!hideBody && faceW > 0.08) {
     ctx.save();
-    ctx.globalAlpha = 0.16 * faceW * bodyScale;
+    ctx.globalAlpha = 0.16 * faceW * bodyScale * (1 - hop * 0.7);
     ctx.fillStyle = "#1c1a16";
     ctx.beginPath();
     ctx.ellipse(
       4 + lookX * 12,
-      FACE_R * 0.86 * bodyScale + 22 + lookY * 6,
-      72 * bodyScale,
-      11 * bodyScale,
+      FACE_R * 0.86 * bodyScale + 22 + lookY * 6 + hop * FACE_R * 0.92,
+      72 * bodyScale * (1 + hop * 0.2),
+      11 * bodyScale * (1 - hop * 0.25),
       0,
       0,
       Math.PI * 2,
@@ -88,7 +90,7 @@ export function drawGrokBot(
     1 + lookX * lookX * 0.03 - lookY * lookY * 0.015,
     1 + lookY * lookY * 0.025 - lookX * lookX * 0.018,
   );
-  ctx.scale(bodyScale, bodyScale);
+  ctx.scale(bodyScale * (1 / squash), bodyScale * squash);
 
   const body = engine.bodyPoints();
   if (!hideBody && (faceW > 0.02 || exclaimW > 0.02)) {

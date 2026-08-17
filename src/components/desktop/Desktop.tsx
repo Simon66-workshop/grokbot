@@ -54,6 +54,13 @@ const MOODS: { label: string; run: () => void }[] = [
       getEngine()?.play("orbits");
     },
   },
+  {
+    label: "Bounce",
+    run: () => {
+      useAtelier.getState().set({ state: "bounce", expression: 5 });
+      getEngine()?.play("bounce");
+    },
+  },
   { label: "Tour", run: () => getEngine()?.playDemo() },
 ];
 

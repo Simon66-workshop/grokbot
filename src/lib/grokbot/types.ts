@@ -41,7 +41,8 @@ export type StateId =
   | "sparkle"
   | "sleep"
   | "trail"
-  | "think";
+  | "think"
+  | "bounce";
 
 export type Spring = { value: number; vel: number };
 

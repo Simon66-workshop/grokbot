@@ -103,6 +103,7 @@ const actions: Record<string, () => void> = {
   think: () => engine.play("loading"),
   wow: () => engine.play("exclaim"),
   orbit: () => engine.play("orbits"),
+  bounce: () => engine.play("bounce"),
   tour: () => engine.playDemo(),
 };
 
