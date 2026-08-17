@@ -183,6 +183,10 @@ export function GrokBotCanvas({
         ref={canvasRef}
         className="block size-full"
         aria-label="Grok Bot icon"
+        onDoubleClick={(e) => {
+          e.preventDefault();
+          engineRef.current?.bounceOnce();
+        }}
       />
     </div>
   );

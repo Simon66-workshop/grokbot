@@ -490,6 +490,12 @@ export class GrokBotEngine {
     }
   }
 
+  bounceOnce() {
+    this.play("bounce");
+    this.bounceHold = false;
+    this.stateUntil = this.elapsed + 2.32;
+  }
+
   playDemo() {
     this.demoPlaying = true;
     this.demoT0 = this.elapsed;

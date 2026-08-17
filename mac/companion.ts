@@ -139,6 +139,8 @@ wheel.addEventListener("pointermove", (e) => {
 });
 
 let dragging: { x: number; y: number; moved: boolean } | null = null;
+let tapAt = 0;
+let tapTimer = 0;
 wrap.addEventListener("pointerdown", (e) => {
   dragging = { x: e.screenX, y: e.screenY, moved: false };
   wrap.setPointerCapture(e.pointerId);
@@ -153,6 +155,16 @@ wrap.addEventListener("pointermove", (e) => {
   dragging.y = e.screenY;
 });
 wrap.addEventListener("pointerup", () => {
-  if (dragging && !dragging.moved) engine.blink();
+  if (dragging && !dragging.moved) {
+    const now = performance.now();
+    if (now - tapAt < 340) {
+      window.clearTimeout(tapTimer);
+      tapAt = 0;
+      engine.bounceOnce();
+    } else {
+      tapAt = now;
+      tapTimer = window.setTimeout(() => engine.blink(), 280);
+    }
+  }
   dragging = null;
 });

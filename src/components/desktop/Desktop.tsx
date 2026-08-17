@@ -83,6 +83,8 @@ export function Desktop() {
   const vel = useRef({ x: 0, y: 0 });
   const last = useRef({ x: 0, y: 0, t: 0 });
   const drag = useRef<{ dx: number; dy: number; moved: boolean } | null>(null);
+  const tapAt = useRef(0);
+  const tapTimer = useRef(0);
 
   const applyPos = () => {
     const el = widget.current;
@@ -229,8 +231,18 @@ export function Desktop() {
 
   const onDragEnd = () => {
     if (drag.current && !drag.current.moved) {
-      getEngine()?.blink();
-      setOpen((v) => !v);
+      const now = performance.now();
+      if (now - tapAt.current < 340) {
+        window.clearTimeout(tapTimer.current);
+        tapAt.current = 0;
+        getEngine()?.bounceOnce();
+      } else {
+        tapAt.current = now;
+        tapTimer.current = window.setTimeout(() => {
+          getEngine()?.blink();
+          setOpen((v) => !v);
+        }, 280);
+      }
       vel.current = { x: 0, y: 0 };
     } else if (!isPet()) {
       vel.current.x = Math.max(-38, Math.min(38, vel.current.x));

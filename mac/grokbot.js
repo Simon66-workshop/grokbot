@@ -983,6 +983,11 @@
           break;
       }
     }
+    bounceOnce() {
+      this.play("bounce");
+      this.bounceHold = false;
+      this.stateUntil = this.elapsed + 2.32;
+    }
     playDemo() {
       this.demoPlaying = true;
       this.demoT0 = this.elapsed;
@@ -1824,6 +1829,8 @@
     if (e2.buttons) pickWheel(e2);
   });
   var dragging = null;
+  var tapAt = 0;
+  var tapTimer = 0;
   wrap.addEventListener("pointerdown", (e2) => {
     dragging = { x: e2.screenX, y: e2.screenY, moved: false };
     wrap.setPointerCapture(e2.pointerId);
@@ -1838,7 +1845,17 @@
     dragging.y = e2.screenY;
   });
   wrap.addEventListener("pointerup", () => {
-    if (dragging && !dragging.moved) engine.blink();
+    if (dragging && !dragging.moved) {
+      const now = performance.now();
+      if (now - tapAt < 340) {
+        window.clearTimeout(tapTimer);
+        tapAt = 0;
+        engine.bounceOnce();
+      } else {
+        tapAt = now;
+        tapTimer = window.setTimeout(() => engine.blink(), 280);
+      }
+    }
     dragging = null;
   });
 })();
