@@ -14,4 +14,7 @@ contextBridge.exposeInMainWorld("pet", {
   onCursor(fn) {
     ipcRenderer.on("pet-cursor", (_e, x, y) => fn(x, y));
   },
+  onSide(fn) {
+    ipcRenderer.on("pet-side", (_e, s) => fn(s));
+  },
 });

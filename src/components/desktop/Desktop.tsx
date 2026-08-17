@@ -64,10 +64,31 @@ const MOODS: { label: string; run: () => void }[] = [
   { label: "Tour", run: () => getEngine()?.playDemo() },
 ];
 
-function clampPos(x: number, y: number, w: number, h: number) {
+const STAGE = { w: 580, h: 600 };
+const BALL: Record<string, { x: number; y: number }> = {
+  bottom: { x: 290, y: 220 },
+  top: { x: 290, y: 380 },
+  right: { x: 160, y: 300 },
+  left: { x: 420, y: 300 },
+};
+
+function pickSide(bx: number, by: number) {
+  const l = bx;
+  const r = window.innerWidth - bx;
+  const t = by;
+  const b = window.innerHeight - by;
+  const edge = 130;
+  if (b < edge && b <= t) return "top";
+  if (t < edge && t < b) return "bottom";
+  if (l < edge && l <= r) return "right";
+  if (r < edge && r < l) return "left";
+  return "bottom";
+}
+
+function clampBall(x: number, y: number) {
   return {
-    x: Math.min(Math.max(8, window.innerWidth - w - 8), Math.max(8, x)),
-    y: Math.min(Math.max(8, window.innerHeight - h - 8), Math.max(8, y)),
+    x: Math.min(window.innerWidth - 8, Math.max(8, x)),
+    y: Math.min(window.innerHeight - 8, Math.max(8, y)),
   };
 }
 
@@ -77,7 +98,7 @@ function isPet() {
 
 export function Desktop() {
   const [open, setOpen] = useState(false);
-  const [dockAbove, setDockAbove] = useState(false);
+  const [dockSide, setDockSide] = useState("bottom");
   const [holding, setHolding] = useState(false);
   const faceColor = useAtelier((s) => s.faceColor);
   const widget = useRef<HTMLDivElement>(null);
@@ -97,20 +118,21 @@ export function Desktop() {
   const tapAt = useRef(0);
   const tapTimer = useRef(0);
   const hideTimer = useRef(0);
+  const dockSideRef = useRef("bottom");
 
   const applyPos = () => {
     const el = widget.current;
     if (!el || isPet()) return;
-    el.style.transform = `translate(${pos.current.x}px, ${pos.current.y}px)`;
+    const o = BALL[dockSideRef.current] ?? BALL.bottom!;
+    el.style.transform = `translate(${pos.current.x - o.x}px, ${pos.current.y - o.y}px)`;
   };
 
   const placeDock = () => {
     if (isPet()) return;
-    const face = faceRef.current;
-    const top = pos.current.y;
-    const faceH = face?.offsetHeight ?? 280;
-    const spaceBelow = window.innerHeight - (top + faceH);
-    setDockAbove(spaceBelow < 220);
+    const next = pickSide(pos.current.x, pos.current.y);
+    dockSideRef.current = next;
+    setDockSide(next);
+    applyPos();
   };
 
   const savePos = () => {
@@ -145,16 +167,13 @@ export function Desktop() {
 
   useEffect(() => {
     if (isPet()) return;
-    const el = widget.current;
-    const w = el?.offsetWidth ?? 360;
-    const h = el?.offsetHeight ?? 360;
     let placed = false;
     try {
       const raw = localStorage.getItem(POS_KEY);
       if (raw) {
         const p = JSON.parse(raw) as { x: number; y: number };
         if (Number.isFinite(p.x) && Number.isFinite(p.y)) {
-          pos.current = clampPos(p.x, p.y, w, h);
+          pos.current = clampBall(p.x, p.y);
           placed = true;
         }
       }
@@ -162,23 +181,12 @@ export function Desktop() {
       /* ignore */
     }
     if (!placed) {
-      pos.current = {
-        x: Math.max(8, (window.innerWidth - w) / 2),
-        y: Math.max(8, (window.innerHeight - h) / 2 - 12),
-      };
+      pos.current = clampBall(window.innerWidth / 2, window.innerHeight / 2);
     }
-    applyPos();
     placeDock();
 
     const onResize = () => {
-      const box = widget.current;
-      pos.current = clampPos(
-        pos.current.x,
-        pos.current.y,
-        box?.offsetWidth ?? w,
-        box?.offsetHeight ?? h,
-      );
-      applyPos();
+      pos.current = clampBall(pos.current.x, pos.current.y);
       placeDock();
     };
     window.addEventListener("resize", onResize);
@@ -190,19 +198,16 @@ export function Desktop() {
     let raf = 0;
     const step = () => {
       if (!press.current && (Math.abs(vel.current.x) > 0.12 || Math.abs(vel.current.y) > 0.12)) {
-        const el = widget.current;
-        const w = el?.offsetWidth ?? 360;
-        const h = el?.offsetHeight ?? 360;
         let { x, y } = pos.current;
         x += vel.current.x;
         y += vel.current.y;
-        const next = clampPos(x, y, w, h);
+        const next = clampBall(x, y);
         if (next.x !== x) vel.current.x *= -0.52;
         if (next.y !== y) vel.current.y *= -0.52;
         pos.current = next;
         vel.current.x *= 0.9;
         vel.current.y *= 0.9;
-        applyPos();
+        placeDock();
         if (Math.abs(vel.current.x) <= 0.12 && Math.abs(vel.current.y) <= 0.12) {
           vel.current = { x: 0, y: 0 };
           savePos();
@@ -253,14 +258,7 @@ export function Desktop() {
     if (isPet()) {
       window.pet?.moveBy(e.screenX - prevX, e.screenY - prevY);
     } else {
-      const el = widget.current;
-      pos.current = clampPos(
-        e.clientX - p.dx,
-        e.clientY - p.dy,
-        el?.offsetWidth ?? 280,
-        el?.offsetHeight ?? 280,
-      );
-      applyPos();
+      pos.current = clampBall(e.clientX - p.dx, e.clientY - p.dy);
       placeDock();
     }
   };
@@ -315,19 +313,32 @@ export function Desktop() {
     <div
       data-dock
       className={cn(
-        "relative z-20 flex shrink-0 flex-col items-center gap-1.5 px-1",
-        dockAbove ? "-mb-8" : "-mt-8",
+        "absolute z-20 flex flex-col items-center gap-1.5",
+        dockSide === "bottom" && "inset-x-0 top-[400px]",
+        dockSide === "top" && "inset-x-0 bottom-[400px]",
+        dockSide === "right" && "top-1/2 left-[400px] w-[168px] -translate-y-1/2",
+        dockSide === "left" && "top-1/2 right-[400px] w-[168px] -translate-y-1/2",
         open ? "opacity-100" : "pointer-events-none invisible",
       )}
     >
       <ColorWheel value={faceColor || GROK_BLUE} onChange={setColor} compact />
-      <div className="flex w-max max-w-full flex-nowrap items-center justify-center gap-px whitespace-nowrap rounded-full bg-ink/55 p-1 backdrop-blur-sm">
+      <div
+        className={cn(
+          "flex items-center justify-center gap-px whitespace-nowrap rounded-full bg-ink/55 p-1 backdrop-blur-sm",
+          dockSide === "left" || dockSide === "right"
+            ? "w-full flex-col rounded-2xl py-1.5"
+            : "w-max max-w-full flex-nowrap",
+        )}
+      >
         {MOODS.map((m) => (
           <button
             key={m.label}
             type="button"
             onClick={m.run}
-            className="shrink-0 rounded-full px-1.5 py-1 text-[9px] font-medium text-paper hover:bg-white/10"
+            className={cn(
+              "shrink-0 rounded-full px-1.5 py-1 text-[9px] font-medium text-paper hover:bg-white/10",
+              (dockSide === "left" || dockSide === "right") && "w-full text-center",
+            )}
           >
             {m.label}
           </button>
@@ -349,11 +360,12 @@ export function Desktop() {
       {!isPet() && <MacDesktop />}
       <div
         ref={widget}
+        data-side={dockSide}
         className={cn(
-          "z-20 flex w-[min(520px,94vw)] flex-col items-center will-change-transform",
-          isPet() ? "relative mx-auto" : "absolute top-0 left-0",
-          dockAbove && "flex-col-reverse",
+          "relative z-20 will-change-transform",
+          isPet() ? "mx-auto" : "absolute top-0 left-0",
         )}
+        style={{ width: STAGE.w, height: STAGE.h }}
         onPointerEnter={() => showDock(true)}
         onPointerLeave={() => {
           if (!press.current) showDock(false);
@@ -362,7 +374,11 @@ export function Desktop() {
         <div
           ref={faceRef}
           className={cn(
-            "w-full origin-center cursor-grab touch-none active:cursor-grabbing",
+            "absolute h-[440px] w-[440px] origin-center cursor-grab touch-none active:cursor-grabbing",
+            dockSide === "bottom" && "top-0 left-[70px]",
+            dockSide === "top" && "bottom-0 left-[70px]",
+            dockSide === "right" && "top-[80px] left-0",
+            dockSide === "left" && "top-[80px] right-0",
             holding && "scale-[1.04]",
           )}
           onPointerDown={onDragStart}

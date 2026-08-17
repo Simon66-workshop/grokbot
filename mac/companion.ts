@@ -47,6 +47,12 @@ const dock = document.querySelector<HTMLDivElement>("#dock")!;
 const wheel = document.querySelector<HTMLCanvasElement>("#wheel")!;
 const presets = document.querySelector<HTMLDivElement>("#presets")!;
 
+if (window.pet?.onSide) {
+  window.pet.onSide((s) => {
+    stage.dataset.side = s;
+  });
+}
+
 function showDock(open: boolean) {
   stage.classList.toggle("open", open);
   if (open) setThrough(false);

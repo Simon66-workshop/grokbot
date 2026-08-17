@@ -1815,6 +1815,11 @@
   var dock = document.querySelector("#dock");
   var wheel = document.querySelector("#wheel");
   var presets = document.querySelector("#presets");
+  if (window.pet?.onSide) {
+    window.pet.onSide((s) => {
+      stage.dataset.side = s;
+    });
+  }
   function showDock(open) {
     stage.classList.toggle("open", open);
     if (open) setThrough(false);

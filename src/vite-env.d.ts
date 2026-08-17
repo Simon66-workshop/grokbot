@@ -6,6 +6,7 @@ interface PetBridge {
   setClickThrough?: (on: boolean) => void;
   setDock?: (open: boolean) => void;
   onCursor?: (fn: (x: number, y: number) => void) => void;
+  onSide?: (fn: (side: string) => void) => void;
 }
 
 interface Window {
