@@ -59,23 +59,14 @@ function showDock(open: boolean) {
   else if (!press) setThrough(true);
 }
 
-let hideTimer = 0;
-function armHide() {
-  window.clearTimeout(hideTimer);
-  hideTimer = window.setTimeout(() => {
-    if (press) return;
-    showDock(false);
-  }, 480);
-}
-function cancelHide() {
-  window.clearTimeout(hideTimer);
-  showDock(true);
-}
-
 if (pet) {
-  stage.addEventListener("pointerenter", cancelHide);
-  stage.addEventListener("pointerleave", () => {
-    if (!press) armHide();
+  wrap.addEventListener("pointerenter", () => setThrough(false));
+  wrap.addEventListener("pointerleave", () => {
+    if (!press && !stage.classList.contains("open")) setThrough(true);
+  });
+  dock.addEventListener("pointerenter", () => setThrough(false));
+  dock.addEventListener("pointerleave", () => {
+    if (!press && !stage.classList.contains("open")) setThrough(true);
   });
 }
 
@@ -222,9 +213,11 @@ wrap.addEventListener("pointerup", () => {
       engine.bounceOnce();
     } else {
       tapAt = now;
-      tapTimer = window.setTimeout(() => engine.blink(), 280);
+      tapTimer = window.setTimeout(() => {
+        engine.blink();
+        showDock(!stage.classList.contains("open"));
+      }, 280);
     }
   }
   press = null;
-  if (pet && !stage.matches(":hover")) armHide();
 });

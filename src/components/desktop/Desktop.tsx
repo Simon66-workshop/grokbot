@@ -117,7 +117,6 @@ export function Desktop() {
   } | null>(null);
   const tapAt = useRef(0);
   const tapTimer = useRef(0);
-  const hideTimer = useRef(0);
   const dockSideRef = useRef("bottom");
 
   const applyPos = () => {
@@ -294,21 +293,6 @@ export function Desktop() {
     placeDock();
   };
 
-  const showDock = (v: boolean) => {
-    window.clearTimeout(hideTimer.current);
-    if (v) {
-      setOpen(true);
-      window.pet?.setClickThrough?.(false);
-      placeDock();
-      return;
-    }
-    hideTimer.current = window.setTimeout(() => {
-      if (press.current) return;
-      setOpen(false);
-      window.pet?.setClickThrough?.(true);
-    }, 480);
-  };
-
   const dock = (
     <div
       data-dock
@@ -356,7 +340,14 @@ export function Desktop() {
   );
 
   return (
-    <div className="relative h-dvh w-full overflow-hidden bg-transparent">
+    <div
+      className="relative h-dvh w-full overflow-hidden bg-transparent"
+      onPointerDown={(e) => {
+        if (widget.current && !widget.current.contains(e.target as Node)) {
+          setOpen(false);
+        }
+      }}
+    >
       {!isPet() && <MacDesktop />}
       <div
         ref={widget}
@@ -366,9 +357,11 @@ export function Desktop() {
           isPet() ? "mx-auto" : "absolute top-0 left-0",
         )}
         style={{ width: STAGE.w, height: STAGE.h }}
-        onPointerEnter={() => showDock(true)}
+        onPointerEnter={() => {
+          window.pet?.setClickThrough?.(false);
+        }}
         onPointerLeave={() => {
-          if (!press.current) showDock(false);
+          if (!press.current && !open) window.pet?.setClickThrough?.(true);
         }}
       >
         <div
