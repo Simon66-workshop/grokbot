@@ -5,7 +5,7 @@ import fs from "node:fs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const POS_FILE = path.join(app.getPath("userData"), "pet-pos.json");
-const FACE = 300;
+const FACE = 440;
 const DOCK = 230;
 
 let win = null;

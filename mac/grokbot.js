@@ -1474,7 +1474,7 @@
     const faceScale = opts?.faceScale ?? 0.31;
     const scale = dpr * faceScale / FACE_R;
     ctx.scale(scale, scale);
-    if (faceScale > 0.33) ctx.translate(0, -FACE_R * 0.08);
+    if (faceScale > 0.28) ctx.translate(0, -FACE_R * 0.06);
     const face = resolveFaceHex(engine2.faceColor);
     const eyeFill = theme.eye;
     const spin = engine2.t.spin.value;
@@ -1484,7 +1484,7 @@
     const hop = engine2.t.hop.value;
     const hopX = engine2.t.hopX.value;
     const squash = Math.max(0.45, engine2.t.squash.value);
-    ctx.translate(flyX + hopX * FACE_R * 0.48, flyY - hop * FACE_R * 0.52);
+    ctx.translate(flyX + hopX * FACE_R * 0.7, flyY - hop * FACE_R * 0.78);
     const orbitW = engine2.t.orbitW.value;
     const streakW = engine2.t.streakW.value;
     const bodyScale = Math.max(0.04, engine2.t.bodyScale.value);
@@ -1551,7 +1551,7 @@
   function drawContactShadow(ctx, faceW, bodyScale, hop, hopX, lookX, lookY) {
     const fade = faceW * bodyScale * (1 - hop * 0.45);
     const x = lookX * 8 - hopX * FACE_R * 0.22;
-    const y = FACE_R * 0.94 * bodyScale + 6 + lookY * 3 + hop * FACE_R * 0.52;
+    const y = FACE_R * 0.94 * bodyScale + 6 + lookY * 3 + hop * FACE_R * 0.78;
     ctx.save();
     ctx.fillStyle = "#1a1814";
     ctx.globalAlpha = 0.09 * fade;
@@ -1865,7 +1865,7 @@
   var tick = (now) => {
     engine.tick(now);
     const ctx = canvas.getContext("2d");
-    if (ctx) drawGrokBot(ctx, engine, canvas.width || 480, THEME, { faceScale: 0.34 });
+    if (ctx) drawGrokBot(ctx, engine, canvas.width || 480, THEME, { faceScale: 0.24 });
     requestAnimationFrame(tick);
   };
   new ResizeObserver(sizeCanvas).observe(wrap);

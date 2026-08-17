@@ -38,7 +38,7 @@ export function drawGrokBot(
   const faceScale = opts?.faceScale ?? 0.31;
   const scale = (dpr * faceScale) / FACE_R;
   ctx.scale(scale, scale);
-  if (faceScale > 0.33) ctx.translate(0, -FACE_R * 0.08);
+  if (faceScale > 0.28) ctx.translate(0, -FACE_R * 0.06);
 
   const face = resolveFaceHex(engine.faceColor);
   const eyeFill = theme.eye;
@@ -50,7 +50,7 @@ export function drawGrokBot(
   const hop = engine.t.hop.value;
   const hopX = engine.t.hopX.value;
   const squash = Math.max(0.45, engine.t.squash.value);
-  ctx.translate(flyX + hopX * FACE_R * 0.48, flyY - hop * FACE_R * 0.52);
+  ctx.translate(flyX + hopX * FACE_R * 0.7, flyY - hop * FACE_R * 0.78);
 
   const orbitW = engine.t.orbitW.value;
   const streakW = engine.t.streakW.value;
@@ -139,7 +139,7 @@ function drawContactShadow(
 ) {
   const fade = faceW * bodyScale * (1 - hop * 0.45);
   const x = lookX * 8 - hopX * FACE_R * 0.22;
-  const y = FACE_R * 0.94 * bodyScale + 6 + lookY * 3 + hop * FACE_R * 0.52;
+  const y = FACE_R * 0.94 * bodyScale + 6 + lookY * 3 + hop * FACE_R * 0.78;
   ctx.save();
   ctx.fillStyle = "#1a1814";
   ctx.globalAlpha = 0.09 * fade;

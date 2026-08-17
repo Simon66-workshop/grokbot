@@ -340,7 +340,7 @@ export function Desktop() {
       <div
         ref={widget}
         className={cn(
-          "z-20 flex w-[min(260px,70vw)] flex-col items-center gap-3 will-change-transform",
+          "z-20 flex w-[min(380px,78vw)] flex-col items-center gap-3 will-change-transform",
           isPet() ? "relative mx-auto" : "absolute top-0 left-0",
           dockAbove && "flex-col-reverse",
         )}
@@ -360,7 +360,7 @@ export function Desktop() {
           onPointerUp={onDragEnd}
           onPointerCancel={onDragEnd}
         >
-          <GrokBotCanvas followGlobal faceScale={0.34} className="w-full" />
+          <GrokBotCanvas followGlobal faceScale={0.24} className="w-full" />
         </div>
         {dock}
       </div>
