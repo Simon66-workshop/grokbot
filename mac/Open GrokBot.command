@@ -7,7 +7,7 @@ ELECTRON="$ROOT/node_modules/.bin/electron"
 
 if [ ! -x "$ELECTRON" ]; then
   if command -v npm >/dev/null 2>&1; then
-    npm install
+    npm install --legacy-peer-deps
   fi
 fi
 
