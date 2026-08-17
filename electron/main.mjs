@@ -5,11 +5,11 @@ import fs from "node:fs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const POS_FILE = path.join(app.getPath("userData"), "pet-pos.json");
-const FACE = 440;
-const DOCK = 230;
+const STAGE_W = 440;
+const STAGE_H = 560;
+const BALL_CY = 210;
 
 let win = null;
-let dockOpen = false;
 
 function loadPos() {
   try {
@@ -40,26 +40,14 @@ function clampToDisplay(x, y, w, h) {
   };
 }
 
-function applySize(open) {
-  if (!win) return;
-  dockOpen = open;
-  const h = open ? FACE + DOCK : FACE;
-  const [x, y] = win.getPosition();
-  const a = screen.getDisplayNearestPoint({ x, y }).workArea;
-  let ny = y;
-  if (open && y + h > a.y + a.height) ny = a.y + a.height - h;
-  const next = clampToDisplay(x, ny, FACE, h);
-  win.setBounds({ x: next.x, y: next.y, width: FACE, height: h });
-}
-
 function create() {
   const cursor = screen.getCursorScreenPoint();
   const saved = loadPos();
   win = new BrowserWindow({
-    width: FACE,
-    height: FACE,
-    x: saved?.x ?? Math.max(16, cursor.x - FACE / 2),
-    y: saved?.y ?? Math.max(16, cursor.y - FACE / 2),
+    width: STAGE_W,
+    height: STAGE_H,
+    x: saved?.x ?? Math.max(16, cursor.x - STAGE_W / 2),
+    y: saved?.y ?? Math.max(16, cursor.y - BALL_CY),
     frame: false,
     transparent: true,
     hasShadow: false,
@@ -98,7 +86,7 @@ function create() {
     const p = screen.getCursorScreenPoint();
     const b = win.getBounds();
     const cx = b.x + b.width / 2;
-    const cy = b.y + FACE / 2;
+    const cy = b.y + BALL_CY;
     const nx = Math.max(-1, Math.min(1, (p.x - cx) / 260));
     const ny = Math.max(-1, Math.min(1, (p.y - cy) / 200));
     win.webContents.send("pet-cursor", nx, ny);
@@ -109,8 +97,7 @@ ipcMain.on("pet-move-by", (event, dx, dy) => {
   const w = BrowserWindow.fromWebContents(event.sender);
   if (!w || typeof dx !== "number" || typeof dy !== "number") return;
   const [x, y] = w.getPosition();
-  const h = dockOpen ? FACE + DOCK : FACE;
-  const next = clampToDisplay(x + dx, y + dy, FACE, h);
+  const next = clampToDisplay(x + dx, y + dy, STAGE_W, STAGE_H);
   w.setPosition(Math.round(next.x), Math.round(next.y));
 });
 
@@ -120,8 +107,9 @@ ipcMain.on("pet-click-through", (event, ignore) => {
   w.setIgnoreMouseEvents(Boolean(ignore), { forward: true });
 });
 
-ipcMain.on("pet-dock", (_event, open) => {
-  applySize(Boolean(open));
+ipcMain.on("pet-dock", () => {
+  /* panel lives inside the fixed stage; size does not change */
+});
 });
 
 if (process.platform !== "darwin") {

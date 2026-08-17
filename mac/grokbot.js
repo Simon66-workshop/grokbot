@@ -1817,27 +1817,25 @@
   var presets = document.querySelector("#presets");
   function showDock(open) {
     stage.classList.toggle("open", open);
-    dock.classList.toggle("open", open);
-    window.pet?.setDock?.(open);
     if (open) setThrough(false);
     else if (!press) setThrough(true);
   }
+  var hideTimer = 0;
+  function armHide() {
+    window.clearTimeout(hideTimer);
+    hideTimer = window.setTimeout(() => {
+      if (press) return;
+      showDock(false);
+    }, 480);
+  }
+  function cancelHide() {
+    window.clearTimeout(hideTimer);
+    showDock(true);
+  }
   if (pet) {
-    const hold = () => {
-      setThrough(false);
-      showDock(true);
-    };
-    const release = () => {
-      if (!press) {
-        showDock(false);
-        setThrough(true);
-      }
-    };
-    wrap.addEventListener("pointerenter", hold);
-    wrap.addEventListener("pointerleave", release);
-    dock.addEventListener("pointerenter", () => setThrough(false));
-    dock.addEventListener("pointerleave", () => {
-      if (!press && !stage.matches(":hover")) showDock(false);
+    stage.addEventListener("pointerenter", cancelHide);
+    stage.addEventListener("pointerleave", () => {
+      if (!press) armHide();
     });
   }
   function sizeCanvas() {
@@ -1972,9 +1970,6 @@
       }
     }
     press = null;
-    if (pet && !stage.matches(":hover")) {
-      showDock(false);
-      setThrough(true);
-    }
+    if (pet && !stage.matches(":hover")) armHide();
   });
 })();

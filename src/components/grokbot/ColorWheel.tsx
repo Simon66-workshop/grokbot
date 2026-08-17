@@ -15,10 +15,12 @@ export function ColorWheel({
   value,
   onChange,
   className,
+  compact = false,
 }: {
   value: string;
   onChange: (hex: string) => void;
   className?: string;
+  compact?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const hsv = hexToHsv(resolveFaceHex(value));
@@ -50,7 +52,10 @@ export function ColorWheel({
         ref={canvasRef}
         width={SIZE}
         height={SIZE}
-        className="size-[108px] cursor-crosshair touch-none"
+        className={cn(
+          "cursor-crosshair touch-none",
+          compact ? "size-[72px]" : "size-[108px]",
+        )}
         onPointerDown={(e) => {
           (e.currentTarget as HTMLCanvasElement).setPointerCapture(e.pointerId);
           pick(e);

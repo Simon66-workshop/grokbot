@@ -96,6 +96,7 @@ export function Desktop() {
   } | null>(null);
   const tapAt = useRef(0);
   const tapTimer = useRef(0);
+  const hideTimer = useRef(0);
 
   const applyPos = () => {
     const el = widget.current;
@@ -296,21 +297,30 @@ export function Desktop() {
   };
 
   const showDock = (v: boolean) => {
-    setOpen(v);
-    window.pet?.setDock?.(v);
-    window.pet?.setClickThrough?.(!v);
-    if (v) placeDock();
+    window.clearTimeout(hideTimer.current);
+    if (v) {
+      setOpen(true);
+      window.pet?.setClickThrough?.(false);
+      placeDock();
+      return;
+    }
+    hideTimer.current = window.setTimeout(() => {
+      if (press.current) return;
+      setOpen(false);
+      window.pet?.setClickThrough?.(true);
+    }, 480);
   };
 
   const dock = (
     <div
       data-dock
       className={cn(
-        "relative z-20 flex shrink-0 flex-col items-center gap-2 px-1",
-        open ? "opacity-100" : "hidden",
+        "relative z-20 flex shrink-0 flex-col items-center gap-1.5 px-1",
+        dockAbove ? "-mb-8" : "-mt-8",
+        open ? "opacity-100" : "pointer-events-none invisible",
       )}
     >
-      <ColorWheel value={faceColor || GROK_BLUE} onChange={setColor} />
+      <ColorWheel value={faceColor || GROK_BLUE} onChange={setColor} compact />
       <div className="flex flex-wrap justify-center gap-1">
         {MOODS.map((m) => (
           <button
@@ -340,7 +350,7 @@ export function Desktop() {
       <div
         ref={widget}
         className={cn(
-          "z-20 flex w-[min(380px,78vw)] flex-col items-center gap-3 will-change-transform",
+          "z-20 flex w-[min(380px,78vw)] flex-col items-center will-change-transform",
           isPet() ? "relative mx-auto" : "absolute top-0 left-0",
           dockAbove && "flex-col-reverse",
         )}

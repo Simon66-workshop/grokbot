@@ -16,15 +16,14 @@
         user-select: none;
       }
       .stage {
+        position: relative;
+        width: 100%;
         min-height: 100%;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: flex-start;
       }
       .face {
-        width: 420px;
-        height: 420px;
+        width: 440px;
+        height: 440px;
+        margin: 0 auto;
         flex: none;
         cursor: grab;
         transform-origin: center;
@@ -33,24 +32,25 @@
       .face.hold { transform: scale(1.04); }
       .face:active { cursor: grabbing; }
       canvas.bot { display: block; width: 100%; height: 100%; }
-      #wheel { display: block; width: 96px; height: 96px; cursor: crosshair; }
+      #wheel { display: block; width: 80px; height: 80px; cursor: crosshair; }
       .dock {
-        flex: none;
+        position: absolute;
+        left: 50%;
+        top: 79%;
+        transform: translateX(-50%);
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 8px;
-        padding: 4px 0 12px;
+        gap: 6px;
+        padding: 0 0 8px;
         opacity: 0;
         pointer-events: none;
-        max-height: 0;
-        overflow: hidden;
-        transition: opacity 160ms ease, max-height 180ms ease;
+        transition: opacity 140ms ease;
       }
-      .stage.open .dock, .dock.open {
+      .stage:hover .dock,
+      .stage.open .dock {
         opacity: 1;
         pointer-events: auto;
-        max-height: 240px;
       }
       .presets { display: flex; gap: 6px; }
       .presets button {
