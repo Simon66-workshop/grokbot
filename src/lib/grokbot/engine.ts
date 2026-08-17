@@ -17,23 +17,81 @@ import { bodyForShape } from "./shapes";
 import { exclaimStem, stadiumPath } from "./paths";
 import { DEMO_CUES } from "./demo";
 
-/** Child-like ball hop: crouch, three quick bounces, pause, one big jump. */
-const BOUNCE_CUES: { at: number; hop: number; squash: number; tilt: number }[] = [
-  { at: 0.0, hop: 0, squash: 0.8, tilt: 0 },
-  { at: 0.1, hop: 0.56, squash: 1.16, tilt: -0.06 },
-  { at: 0.36, hop: 0, squash: 0.7, tilt: 0.02 },
-  { at: 0.46, hop: 0.3, squash: 1.1, tilt: 0.05 },
-  { at: 0.64, hop: 0, squash: 0.76, tilt: -0.02 },
-  { at: 0.72, hop: 0.22, squash: 1.08, tilt: -0.04 },
-  { at: 0.86, hop: 0, squash: 0.84, tilt: 0 },
-  { at: 1.04, hop: 0, squash: 1, tilt: 0 },
-  { at: 1.26, hop: 0, squash: 0.74, tilt: 0.03 },
-  { at: 1.38, hop: 0.8, squash: 1.2, tilt: -0.08 },
-  { at: 1.8, hop: 0, squash: 0.66, tilt: 0.04 },
-  { at: 1.92, hop: 0.14, squash: 1.06, tilt: 0 },
-  { at: 2.06, hop: 0, squash: 0.9, tilt: 0 },
-  { at: 2.2, hop: 0, squash: 1, tilt: 0 },
+type BounceCue = {
+  at: number;
+  hopX: number;
+  hopY: number;
+  squash: number;
+  tilt: number;
+  expression: number;
+};
+
+const BOUNCE_DIRS: {
+  x: number;
+  y: number;
+  faces: number[];
+}[] = [
+  { x: 0, y: 1, faces: [5, 3, 20, 10] },
+  { x: 0, y: -0.42, faces: [4, 6, 7, 15] },
+  { x: -1, y: 0.22, faces: [2, 13, 11, 21] },
+  { x: 1, y: 0.22, faces: [1, 13, 12, 21] },
+  { x: -0.78, y: 0.86, faces: [2, 5, 14, 3] },
+  { x: 0.78, y: 0.86, faces: [1, 5, 14, 3] },
+  { x: -0.72, y: -0.34, faces: [4, 2, 6, 16] },
+  { x: 0.72, y: -0.34, faces: [4, 1, 6, 16] },
 ];
+
+function pick<T>(xs: T[]): T {
+  return xs[Math.floor(Math.random() * xs.length)]!;
+}
+
+function composeBounce(): BounceCue[] {
+  const hops: BounceCue[] = [];
+  let t = 0;
+  hops.push({
+    at: t,
+    hopX: 0,
+    hopY: 0,
+    squash: 0.78 + Math.random() * 0.06,
+    tilt: 0,
+    expression: pick([6, 15, 0, 19]),
+  });
+  t += 0.08 + Math.random() * 0.06;
+  const n = 3 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < n; i++) {
+    const dir = pick(BOUNCE_DIRS);
+    const big = i === n - 1 || Math.random() < 0.22;
+    const mag = big ? 0.58 + Math.random() * 0.34 : 0.2 + Math.random() * 0.28;
+    hops.push({
+      at: t,
+      hopX: dir.x * mag,
+      hopY: dir.y * mag,
+      squash: 1.06 + mag * 0.18,
+      tilt: -dir.x * (0.08 + mag * 0.08),
+      expression: pick(dir.faces),
+    });
+    t += 0.15 + mag * 0.4;
+    hops.push({
+      at: t,
+      hopX: 0,
+      hopY: 0,
+      squash: 0.66 + Math.random() * 0.1,
+      tilt: dir.x * 0.05,
+      expression: pick([6, 5, 15, 0, pick(dir.faces)]),
+    });
+    t += 0.07 + Math.random() * 0.08;
+    if (Math.random() < 0.28) t += 0.1 + Math.random() * 0.18;
+  }
+  hops.push({
+    at: t,
+    hopX: 0,
+    hopY: 0,
+    squash: 1,
+    tilt: 0,
+    expression: pick([0, 5, 15]),
+  });
+  return hops;
+}
 
 export type Spark = {
   x: number;
@@ -80,6 +138,7 @@ type Targets = {
   flyY: number;
   spin: number;
   hop: number;
+  hopX: number;
   squash: number;
 };
 
@@ -167,6 +226,8 @@ export class GrokBotEngine {
   private lookPhase = 0;
   private bounceT0 = 0;
   private bounceHold = false;
+  private bounceCues: BounceCue[] = [];
+  private bounceDur = 2.3;
 
   constructor() {
     const rest = getExpression(0);
@@ -194,6 +255,7 @@ export class GrokBotEngine {
       flyY: springOf(0),
       spin: springOf(0),
       hop: springOf(0),
+      hopX: springOf(0),
       squash: springOf(1),
     };
     this.seedOrbits();
@@ -219,6 +281,7 @@ export class GrokBotEngine {
       flyY: 0,
       spin: 0,
       hop: 0,
+      hopX: 0,
       squash: 1,
     };
   }
@@ -340,6 +403,7 @@ export class GrokBotEngine {
     this.tgt.gazeX = 0;
     this.tgt.gazeY = 0;
     this.tgt.hop = 0;
+    this.tgt.hopX = 0;
     this.tgt.squash = 1;
     this.bounceHold = false;
     this.nextBlink = this.elapsed + 2.4 + Math.random() * 2.6;
@@ -483,6 +547,7 @@ export class GrokBotEngine {
         this.tgt.flyX = 0;
         this.tgt.flyY = 0;
         this.expression = 5;
+        this.rollBounce();
         this.bounceT0 = this.elapsed;
         this.bounceHold = true;
         this.stateUntil = Number.POSITIVE_INFINITY;
@@ -493,7 +558,7 @@ export class GrokBotEngine {
   bounceOnce() {
     this.play("bounce");
     this.bounceHold = false;
-    this.stateUntil = this.elapsed + 2.32;
+    this.stateUntil = this.elapsed + this.bounceDur;
   }
 
   playDemo() {
@@ -569,7 +634,7 @@ export class GrokBotEngine {
     }
 
     (Object.keys(this.tgt) as (keyof Targets)[]).forEach((k) => {
-      const boost = k === "blink" || k === "hop" || k === "squash" ? 2.15 : 1;
+      const boost = k === "blink" || k === "hop" || k === "hopX" || k === "squash" ? 2.15 : 1;
       stepSpring(this.t[k], this.tgt[k], dt, speed * boost);
     });
 
@@ -668,7 +733,7 @@ export class GrokBotEngine {
       if (roll < 0.16) {
         this.play("bounce");
         this.bounceHold = false;
-        this.stateUntil = this.elapsed + 2.35;
+        this.stateUntil = this.elapsed + this.bounceDur;
       } else if (roll < 0.34) {
         this.play("look");
         this.stateUntil = this.elapsed + 1.1;
@@ -686,6 +751,7 @@ export class GrokBotEngine {
           this.tgt.flyX = 0;
           this.tgt.flyY = 0;
           this.tgt.hop = 0;
+          this.tgt.hopX = 0;
           this.tgt.squash = 1;
           this.tgt.bodyScale = 1;
           this.tgt.eyeAlpha = 1;
@@ -702,22 +768,30 @@ export class GrokBotEngine {
     }
   }
 
+  private rollBounce() {
+    this.bounceCues = composeBounce();
+    const last = this.bounceCues[this.bounceCues.length - 1];
+    this.bounceDur = (last?.at ?? 2) + 0.16;
+  }
+
   private tickBounce() {
-    const CYCLE = 2.32;
     let t = this.elapsed - this.bounceT0;
-    if (this.bounceHold && t > CYCLE) {
+    if (this.bounceHold && t > this.bounceDur) {
+      this.rollBounce();
       this.bounceT0 = this.elapsed;
       t = 0;
     }
-    const cues = BOUNCE_CUES;
+    const cues = this.bounceCues.length ? this.bounceCues : composeBounce();
     let cue = cues[0]!;
     for (const c of cues) {
       if (c.at <= t) cue = c;
     }
-    this.tgt.hop = cue.hop;
+    this.tgt.hop = cue.hopY;
+    this.tgt.hopX = cue.hopX;
     this.tgt.squash = cue.squash;
     this.tgt.yaw = cue.tilt;
     this.tgt.bodyScale = 1;
+    if (this.expression !== cue.expression) this.expression = cue.expression;
   }
 
   private tickGaze() {

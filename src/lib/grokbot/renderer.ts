@@ -46,8 +46,9 @@ export function drawGrokBot(
   const flyX = engine.t.flyX.value * FACE_R * 1.45;
   const flyY = engine.t.flyY.value * FACE_R * 1.45;
   const hop = engine.t.hop.value;
+  const hopX = engine.t.hopX.value;
   const squash = Math.max(0.45, engine.t.squash.value);
-  ctx.translate(flyX, flyY - hop * FACE_R * 0.92);
+  ctx.translate(flyX + hopX * FACE_R * 0.78, flyY - hop * FACE_R * 0.92);
 
   const orbitW = engine.t.orbitW.value;
   const streakW = engine.t.streakW.value;
@@ -71,7 +72,7 @@ export function drawGrokBot(
     ctx.fillStyle = "#1c1a16";
     ctx.beginPath();
     ctx.ellipse(
-      4 + lookX * 12,
+      4 + lookX * 12 - hopX * FACE_R * 0.55,
       FACE_R * 0.86 * bodyScale + 22 + lookY * 6 + hop * FACE_R * 0.92,
       72 * bodyScale * (1 + hop * 0.2),
       11 * bodyScale * (1 - hop * 0.25),
