@@ -1,0 +1,14 @@
+node_modules
+.output
+.vinxi
+.tanstack
+dist
+.DS_Store
+*.log
+/tmp
+screenshots
+artifacts
+vendor
+.grok
+pw-browsers
+public/wallpaper.jpg

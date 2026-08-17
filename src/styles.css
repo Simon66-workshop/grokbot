@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+@theme {
+  --color-paper: #f3f1ea;
+  --color-paper-deep: #e8e4d8;
+  --color-surface: #fffcf6;
+  --color-surface-2: #f7f4ec;
+  --color-ink: #161513;
+  --color-ink-soft: #2c2a26;
+  --color-muted: #6e6a62;
+  --color-subtle: #948f85;
+  --color-line: color-mix(in oklab, var(--color-ink) 10%, transparent);
+  --color-line-strong: color-mix(in oklab, var(--color-ink) 18%, transparent);
+  --color-grok: #1b56f3;
+  --color-grok-ink: #f4f6ff;
+  --color-eye: #fffdf8;
+  --color-danger: #b42318;
+
+  --font-display: "Instrument Serif", "Times New Roman", serif;
+  --font-sans: "Instrument Sans", "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 26px;
+  --radius-2xl: 32px;
+
+  --shadow-card:
+    0 0 0 1px color-mix(in oklab, var(--color-ink) 7%, transparent),
+    0 1px 2px color-mix(in oklab, var(--color-ink) 4%, transparent),
+    0 12px 32px -16px color-mix(in oklab, var(--color-ink) 10%, transparent);
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-quick: 150ms;
+  --motion-fast: 250ms;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: var(--color-paper);
+    color: var(--color-ink);
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    font-family: var(--font-sans);
+    background: var(--color-paper);
+    color: var(--color-ink);
+  }
+
+  html[data-companion],
+  html[data-companion] body {
+    background: transparent;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
