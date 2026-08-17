@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GrokBot</title>
+    <style>
+      :root {
+        --paper: #f3f1ea;
+        --ink: #161513;
+        --muted: #6e6a62;
+        --line: rgba(22, 21, 19, 0.1);
+        --grok: #1b56f3;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: "SF Pro Text", "Helvetica Neue", sans-serif;
+      }
+      .stage {
+        min-height: 100%;
+        display: grid;
+        place-items: center;
+        padding: 32px 20px 80px;
+      }
+      .face {
+        width: min(72vw, 420px);
+        aspect-ratio: 1;
+      }
+      canvas { display: block; width: 100%; height: 100%; }
+      .bar {
+        position: fixed;
+        left: 50%;
+        bottom: 22px;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 6px;
+        padding: 6px;
+        background: rgba(255, 252, 246, 0.92);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        backdrop-filter: blur(16px);
+      }
+      .bar button {
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        font: 500 12px/1 "SF Pro Text", sans-serif;
+        padding: 8px 11px;
+        border-radius: 999px;
+        cursor: pointer;
+      }
+      .bar button:hover { color: var(--ink); background: rgba(22, 21, 19, 0.05); }
+      .hint {
+        position: fixed;
+        top: 18px;
+        left: 22px;
+        font-size: 12px;
+        color: var(--muted);
+        letter-spacing: 0.04em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="hint">GrokBot · 空格眨眼 · D 演示 · R 复位</div>
+    <div class="stage">
+      <div class="face"><canvas id="face" aria-label="Grok Bot"></canvas></div>
+    </div>
+    <div class="bar">
+      <button data-act="idle">Idle</button>
+      <button data-act="blink">Blink</button>
+      <button data-act="look">Look</button>
+      <button data-act="joy">Joy</button>
+      <button data-act="think">Think</button>
+      <button data-act="wow">Wow</button>
+      <button data-act="orbit">Orbit</button>
+      <button data-act="tour">Tour</button>
+    </div>
+    <script src="./grokbot.js"></script>
+  </body>
+</html>
