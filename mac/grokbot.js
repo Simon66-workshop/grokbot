@@ -1241,6 +1241,10 @@
       if (this.followPointer && this.pointer.active && !this.demoPlaying) {
         this.tgt.gazeX = this.pointer.x;
         this.tgt.gazeY = this.pointer.y;
+        if (this.state !== "bounce") {
+          this.tgt.yaw = this.pointer.x * 0.48;
+          this.tgt.pitch = this.pointer.y * 0.32;
+        }
       } else if (this.autoIdle && this.state === "idle" && !this.demoPlaying) {
         const t = this.elapsed;
         this.tgt.gazeX = 0.28 * Math.sin(t * 0.33) * Math.sin(t * 0.17);
@@ -1785,6 +1789,7 @@
     muted: "#6e6a62"
   };
   var COLOR_KEY = "grok-face-color";
+  var HOLD_MS = 220;
   var pet = Boolean(window.pet?.isPet || new URLSearchParams(location.search).has("pet"));
   if (pet) document.documentElement.classList.add("pet");
   function setThrough(on) {
@@ -1800,20 +1805,36 @@
   } catch {
   }
   engine.setFaceColor(faceHex);
+  var stage = document.querySelector("#stage");
   var canvas = document.querySelector("#face");
   var wrap = canvas.parentElement;
   var dock = document.querySelector("#dock");
   var wheel = document.querySelector("#wheel");
   var presets = document.querySelector("#presets");
+  function showDock(open) {
+    stage.classList.toggle("open", open);
+    dock.classList.toggle("open", open);
+    window.pet?.setDock?.(open);
+    if (open) setThrough(false);
+    else if (!press) setThrough(true);
+  }
   if (pet) {
-    const hold = () => setThrough(false);
+    const hold = () => {
+      setThrough(false);
+      showDock(true);
+    };
     const release = () => {
-      if (!dragging) setThrough(true);
+      if (!press) {
+        showDock(false);
+        setThrough(true);
+      }
     };
     wrap.addEventListener("pointerenter", hold);
     wrap.addEventListener("pointerleave", release);
-    dock.addEventListener("pointerenter", hold);
-    dock.addEventListener("pointerleave", release);
+    dock.addEventListener("pointerenter", () => setThrough(false));
+    dock.addEventListener("pointerleave", () => {
+      if (!press && !stage.matches(":hover")) showDock(false);
+    });
   }
   function sizeCanvas() {
     const css = canvas.clientWidth || 360;
@@ -1840,22 +1861,24 @@
   var tick = (now) => {
     engine.tick(now);
     const ctx = canvas.getContext("2d");
-    if (ctx) drawGrokBot(ctx, engine, canvas.width || 480, THEME, { faceScale: 0.4 });
+    if (ctx) drawGrokBot(ctx, engine, canvas.width || 480, THEME, { faceScale: 0.5 });
     requestAnimationFrame(tick);
   };
   new ResizeObserver(sizeCanvas).observe(wrap);
   sizeCanvas();
   paintWheel();
   requestAnimationFrame(tick);
-  window.addEventListener(
-    "pointermove",
-    (e2) => {
-      const nx = (e2.clientX / window.innerWidth - 0.5) * 2;
-      const ny = (e2.clientY / window.innerHeight - 0.5) * 2;
-      engine.pointerMove(nx, ny);
-    },
-    { passive: true }
-  );
+  function lookAt(clientX, clientY) {
+    const r = canvas.getBoundingClientRect();
+    const nx = Math.max(-1, Math.min(1, (clientX - (r.left + r.width / 2)) / Math.max(72, r.width * 0.42)));
+    const ny = Math.max(-1, Math.min(1, (clientY - (r.top + r.height / 2)) / Math.max(72, r.height * 0.42)));
+    engine.pointerMove(nx, ny);
+  }
+  if (pet && window.pet?.onCursor) {
+    window.pet.onCursor((x, y) => engine.pointerMove(x, y));
+  } else {
+    window.addEventListener("pointermove", (e2) => lookAt(e2.clientX, e2.clientY), { passive: true });
+  }
   window.addEventListener("keydown", (e2) => {
     if (e2.code === "Space") {
       e2.preventDefault();
@@ -1902,24 +1925,38 @@
   wheel.addEventListener("pointermove", (e2) => {
     if (e2.buttons) pickWheel(e2);
   });
-  var dragging = null;
+  var press = null;
   var tapAt = 0;
   var tapTimer = 0;
   wrap.addEventListener("pointerdown", (e2) => {
-    dragging = { x: e2.screenX, y: e2.screenY, moved: false };
+    press = {
+      x: e2.screenX,
+      y: e2.screenY,
+      armed: false,
+      moved: false,
+      timer: window.setTimeout(() => {
+        if (!press) return;
+        press.armed = true;
+        wrap.classList.add("hold");
+        setThrough(false);
+      }, HOLD_MS)
+    };
     wrap.setPointerCapture(e2.pointerId);
   });
   wrap.addEventListener("pointermove", (e2) => {
-    if (!dragging) return;
-    const dx = e2.screenX - dragging.x;
-    const dy = e2.screenY - dragging.y;
-    if (Math.hypot(dx, dy) > 3) dragging.moved = true;
+    if (!press) return;
+    const dx = e2.screenX - press.x;
+    const dy = e2.screenY - press.y;
+    if (!press.armed) return;
+    if (Math.hypot(dx, dy) > 3) press.moved = true;
     if (pet && window.pet) window.pet.moveBy(dx, dy);
-    dragging.x = e2.screenX;
-    dragging.y = e2.screenY;
+    press.x = e2.screenX;
+    press.y = e2.screenY;
   });
   wrap.addEventListener("pointerup", () => {
-    if (dragging && !dragging.moved) {
+    if (press) window.clearTimeout(press.timer);
+    wrap.classList.remove("hold");
+    if (press && !press.armed && !press.moved) {
       const now = performance.now();
       if (now - tapAt < 340) {
         window.clearTimeout(tapTimer);
@@ -1930,7 +1967,10 @@
         tapTimer = window.setTimeout(() => engine.blink(), 280);
       }
     }
-    dragging = null;
-    if (pet) setThrough(true);
+    press = null;
+    if (pet && !stage.matches(":hover")) {
+      showDock(false);
+      setThrough(true);
+    }
   });
 })();

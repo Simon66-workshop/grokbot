@@ -66,8 +66,8 @@ const MOODS: { label: string; run: () => void }[] = [
 
 function clampPos(x: number, y: number, w: number, h: number) {
   return {
-    x: Math.min(window.innerWidth - 96, Math.max(-40, x)),
-    y: Math.min(window.innerHeight - 96, Math.max(-16, y)),
+    x: Math.min(window.innerWidth - 72, Math.max(72 - w, x)),
+    y: Math.min(window.innerHeight - 72, Math.max(8, y)),
   };
 }
 
@@ -77,12 +77,23 @@ function isPet() {
 
 export function Desktop() {
   const [open, setOpen] = useState(false);
+  const [dockAbove, setDockAbove] = useState(false);
+  const [holding, setHolding] = useState(false);
   const faceColor = useAtelier((s) => s.faceColor);
   const widget = useRef<HTMLDivElement>(null);
+  const faceRef = useRef<HTMLDivElement>(null);
   const pos = useRef({ x: 0, y: 0 });
   const vel = useRef({ x: 0, y: 0 });
   const last = useRef({ x: 0, y: 0, t: 0 });
-  const drag = useRef<{ dx: number; dy: number; moved: boolean } | null>(null);
+  const press = useRef<{
+    sx: number;
+    sy: number;
+    dx: number;
+    dy: number;
+    timer: number;
+    armed: boolean;
+    moved: boolean;
+  } | null>(null);
   const tapAt = useRef(0);
   const tapTimer = useRef(0);
 
@@ -90,6 +101,15 @@ export function Desktop() {
     const el = widget.current;
     if (!el || isPet()) return;
     el.style.transform = `translate(${pos.current.x}px, ${pos.current.y}px)`;
+  };
+
+  const placeDock = () => {
+    if (isPet()) return;
+    const face = faceRef.current;
+    const top = pos.current.y;
+    const faceH = face?.offsetHeight ?? 280;
+    const spaceBelow = window.innerHeight - (top + faceH);
+    setDockAbove(spaceBelow < 220);
   };
 
   const savePos = () => {
@@ -147,6 +167,7 @@ export function Desktop() {
       };
     }
     applyPos();
+    placeDock();
 
     const onResize = () => {
       const box = widget.current;
@@ -157,6 +178,7 @@ export function Desktop() {
         box?.offsetHeight ?? h,
       );
       applyPos();
+      placeDock();
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
@@ -166,7 +188,7 @@ export function Desktop() {
     if (isPet()) return;
     let raf = 0;
     const step = () => {
-      if (!drag.current && (Math.abs(vel.current.x) > 0.12 || Math.abs(vel.current.y) > 0.12)) {
+      if (!press.current && (Math.abs(vel.current.x) > 0.12 || Math.abs(vel.current.y) > 0.12)) {
         const el = widget.current;
         const w = el?.offsetWidth ?? 360;
         const h = el?.offsetHeight ?? 360;
@@ -192,25 +214,32 @@ export function Desktop() {
   }, []);
 
   const onDragStart = (e: React.PointerEvent) => {
+    if ((e.target as HTMLElement).closest("[data-dock]")) return;
     vel.current = { x: 0, y: 0 };
     last.current = { x: e.screenX, y: e.screenY, t: performance.now() };
-    drag.current = {
-      dx: isPet() ? e.screenX : e.clientX - pos.current.x,
-      dy: isPet() ? e.screenY : e.clientY - pos.current.y,
+    press.current = {
+      sx: e.screenX,
+      sy: e.screenY,
+      dx: e.clientX - pos.current.x,
+      dy: e.clientY - pos.current.y,
+      timer: window.setTimeout(() => {
+        if (!press.current) return;
+        press.current.armed = true;
+        setHolding(true);
+        window.pet?.setClickThrough?.(false);
+      }, 220),
+      armed: false,
       moved: false,
     };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
   const onDrag = (e: React.PointerEvent) => {
-    if (!drag.current) return;
-    const pet = isPet();
-    const nx = pet ? e.screenX : e.clientX - drag.current.dx;
-    const ny = pet ? e.screenY : e.clientY - drag.current.dy;
-    const dist = pet
-      ? Math.hypot(e.screenX - drag.current.dx, e.screenY - drag.current.dy)
-      : Math.hypot(nx - pos.current.x, ny - pos.current.y);
-    if (dist > 3) drag.current.moved = true;
+    const p = press.current;
+    if (!p) return;
+    const dist = Math.hypot(e.screenX - p.sx, e.screenY - p.sy);
+    if (!p.armed) return;
+    if (dist > 3) p.moved = true;
     const now = performance.now();
     const dt = Math.max(8, now - last.current.t);
     vel.current = {
@@ -220,17 +249,26 @@ export function Desktop() {
     const prevX = last.current.x;
     const prevY = last.current.y;
     last.current = { x: e.screenX, y: e.screenY, t: now };
-    if (pet) {
+    if (isPet()) {
       window.pet?.moveBy(e.screenX - prevX, e.screenY - prevY);
     } else {
       const el = widget.current;
-      pos.current = clampPos(nx, ny, el?.offsetWidth ?? 360, el?.offsetHeight ?? 360);
+      pos.current = clampPos(
+        e.clientX - p.dx,
+        e.clientY - p.dy,
+        el?.offsetWidth ?? 280,
+        el?.offsetHeight ?? 280,
+      );
       applyPos();
+      placeDock();
     }
   };
 
   const onDragEnd = () => {
-    if (drag.current && !drag.current.moved) {
+    const p = press.current;
+    if (p) window.clearTimeout(p.timer);
+    setHolding(false);
+    if (p && !p.armed && !p.moved) {
       const now = performance.now();
       if (now - tapAt.current < 340) {
         window.clearTimeout(tapTimer.current);
@@ -240,17 +278,61 @@ export function Desktop() {
         tapAt.current = now;
         tapTimer.current = window.setTimeout(() => {
           getEngine()?.blink();
-          setOpen((v) => !v);
+          setOpen((v) => {
+            const next = !v;
+            window.pet?.setDock?.(next);
+            return next;
+          });
         }, 280);
       }
       vel.current = { x: 0, y: 0 };
-    } else if (!isPet()) {
+    } else if (p?.moved && !isPet()) {
       vel.current.x = Math.max(-38, Math.min(38, vel.current.x));
       vel.current.y = Math.max(-38, Math.min(38, vel.current.y));
     }
-    drag.current = null;
+    press.current = null;
     savePos();
+    placeDock();
   };
+
+  const showDock = (v: boolean) => {
+    setOpen(v);
+    window.pet?.setDock?.(v);
+    window.pet?.setClickThrough?.(!v);
+    if (v) placeDock();
+  };
+
+  const dock = (
+    <div
+      data-dock
+      className={cn(
+        "relative z-20 flex shrink-0 flex-col items-center gap-2 px-1",
+        open ? "opacity-100" : "hidden",
+      )}
+    >
+      <ColorWheel value={faceColor || GROK_BLUE} onChange={setColor} />
+      <div className="flex flex-wrap justify-center gap-1">
+        {MOODS.map((m) => (
+          <button
+            key={m.label}
+            type="button"
+            onClick={m.run}
+            className="rounded-full bg-ink/55 px-2.5 py-1 text-[11px] font-medium text-paper backdrop-blur-sm hover:bg-ink/70"
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+      {!isPet() && (
+        <Link
+          to="/atelier"
+          className="rounded-full bg-ink/40 px-2.5 py-1 text-[11px] text-paper/85 backdrop-blur-sm hover:bg-ink/60"
+        >
+          Studio
+        </Link>
+      )}
+    </div>
+  );
 
   return (
     <div className="relative h-dvh w-full overflow-hidden bg-transparent">
@@ -258,55 +340,29 @@ export function Desktop() {
       <div
         ref={widget}
         className={cn(
-          "z-20 w-[min(420px,86vw)] will-change-transform",
+          "z-20 flex w-[min(260px,70vw)] flex-col items-center gap-3 will-change-transform",
           isPet() ? "relative mx-auto" : "absolute top-0 left-0",
+          dockAbove && "flex-col-reverse",
         )}
-        onPointerEnter={() => {
-          setOpen(true);
-          window.pet?.setClickThrough?.(false);
-        }}
+        onPointerEnter={() => showDock(true)}
         onPointerLeave={() => {
-          setOpen(false);
-          window.pet?.setClickThrough?.(true);
+          if (!press.current) showDock(false);
         }}
       >
         <div
-          className="cursor-grab touch-none active:cursor-grabbing"
+          ref={faceRef}
+          className={cn(
+            "w-full origin-center cursor-grab touch-none active:cursor-grabbing",
+            holding && "scale-[1.04]",
+          )}
           onPointerDown={onDragStart}
           onPointerMove={onDrag}
           onPointerUp={onDragEnd}
+          onPointerCancel={onDragEnd}
         >
-          <GrokBotCanvas followGlobal faceScale={0.36} className="w-full" />
+          <GrokBotCanvas followGlobal faceScale={0.42} className="w-full" />
         </div>
-
-        <div
-          className={cn(
-            "flex flex-col items-center gap-3 px-2 transition-opacity duration-200",
-            open ? "opacity-100" : "pointer-events-none opacity-0",
-          )}
-        >
-          <ColorWheel value={faceColor || GROK_BLUE} onChange={setColor} />
-          <div className="flex flex-wrap justify-center gap-1">
-            {MOODS.map((m) => (
-              <button
-                key={m.label}
-                type="button"
-                onClick={m.run}
-                className="rounded-full bg-ink/55 px-2.5 py-1 text-[11px] font-medium text-paper backdrop-blur-sm hover:bg-ink/70"
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-          {!isPet() && (
-            <Link
-              to="/atelier"
-              className="rounded-full bg-ink/40 px-2.5 py-1 text-[11px] text-paper/85 backdrop-blur-sm hover:bg-ink/60"
-            >
-              Studio
-            </Link>
-          )}
-        </div>
+        {dock}
       </div>
     </div>
   );

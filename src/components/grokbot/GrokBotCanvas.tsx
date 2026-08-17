@@ -151,9 +151,13 @@ export function GrokBotCanvas({
   useEffect(() => {
     if (!followGlobal) return;
     const onMove = (e: PointerEvent) => {
-      const nx = ((e.clientX / window.innerWidth) - 0.5) * 2;
-      const ny = ((e.clientY / window.innerHeight) - 0.5) * 2;
-      engineRef.current?.pointerMove(nx, ny);
+      const el = wrapRef.current;
+      const engine = engineRef.current;
+      if (!el || !engine) return;
+      const r = el.getBoundingClientRect();
+      const nx = Math.max(-1, Math.min(1, (e.clientX - (r.left + r.width / 2)) / Math.max(72, r.width * 0.42)));
+      const ny = Math.max(-1, Math.min(1, (e.clientY - (r.top + r.height / 2)) / Math.max(72, r.height * 0.42)));
+      engine.pointerMove(nx, ny);
     };
     window.addEventListener("pointermove", onMove, { passive: true });
     return () => window.removeEventListener("pointermove", onMove);

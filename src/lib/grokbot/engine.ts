@@ -798,6 +798,10 @@ export class GrokBotEngine {
     if (this.followPointer && this.pointer.active && !this.demoPlaying) {
       this.tgt.gazeX = this.pointer.x;
       this.tgt.gazeY = this.pointer.y;
+      if (this.state !== "bounce") {
+        this.tgt.yaw = this.pointer.x * 0.48;
+        this.tgt.pitch = this.pointer.y * 0.32;
+      }
     } else if (this.autoIdle && this.state === "idle" && !this.demoPlaying) {
       const t = this.elapsed;
       this.tgt.gazeX = 0.28 * Math.sin(t * 0.33) * Math.sin(t * 0.17);

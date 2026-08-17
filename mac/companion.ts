@@ -19,6 +19,7 @@ const THEME: ThemeColors = {
 };
 
 const COLOR_KEY = "grok-face-color";
+const HOLD_MS = 220;
 const pet = Boolean(window.pet?.isPet || new URLSearchParams(location.search).has("pet"));
 if (pet) document.documentElement.classList.add("pet");
 
@@ -39,21 +40,38 @@ try {
 }
 engine.setFaceColor(faceHex);
 
+const stage = document.querySelector<HTMLDivElement>("#stage")!;
 const canvas = document.querySelector<HTMLCanvasElement>("#face")!;
 const wrap = canvas.parentElement!;
 const dock = document.querySelector<HTMLDivElement>("#dock")!;
 const wheel = document.querySelector<HTMLCanvasElement>("#wheel")!;
 const presets = document.querySelector<HTMLDivElement>("#presets")!;
 
+function showDock(open: boolean) {
+  stage.classList.toggle("open", open);
+  dock.classList.toggle("open", open);
+  window.pet?.setDock?.(open);
+  if (open) setThrough(false);
+  else if (!press) setThrough(true);
+}
+
 if (pet) {
-  const hold = () => setThrough(false);
+  const hold = () => {
+    setThrough(false);
+    showDock(true);
+  };
   const release = () => {
-    if (!dragging) setThrough(true);
+    if (!press) {
+      showDock(false);
+      setThrough(true);
+    }
   };
   wrap.addEventListener("pointerenter", hold);
   wrap.addEventListener("pointerleave", release);
-  dock.addEventListener("pointerenter", hold);
-  dock.addEventListener("pointerleave", release);
+  dock.addEventListener("pointerenter", () => setThrough(false));
+  dock.addEventListener("pointerleave", () => {
+    if (!press && !stage.matches(":hover")) showDock(false);
+  });
 }
 
 function sizeCanvas() {
@@ -85,7 +103,7 @@ function setColor(hex: string) {
 const tick = (now: number) => {
   engine.tick(now);
   const ctx = canvas.getContext("2d");
-  if (ctx) drawGrokBot(ctx, engine, canvas.width || 480, THEME, { faceScale: 0.4 });
+  if (ctx) drawGrokBot(ctx, engine, canvas.width || 480, THEME, { faceScale: 0.5 });
   requestAnimationFrame(tick);
 };
 
@@ -94,15 +112,18 @@ sizeCanvas();
 paintWheel();
 requestAnimationFrame(tick);
 
-window.addEventListener(
-  "pointermove",
-  (e) => {
-    const nx = (e.clientX / window.innerWidth - 0.5) * 2;
-    const ny = (e.clientY / window.innerHeight - 0.5) * 2;
-    engine.pointerMove(nx, ny);
-  },
-  { passive: true },
-);
+function lookAt(clientX: number, clientY: number) {
+  const r = canvas.getBoundingClientRect();
+  const nx = Math.max(-1, Math.min(1, (clientX - (r.left + r.width / 2)) / Math.max(72, r.width * 0.42)));
+  const ny = Math.max(-1, Math.min(1, (clientY - (r.top + r.height / 2)) / Math.max(72, r.height * 0.42)));
+  engine.pointerMove(nx, ny);
+}
+
+if (pet && window.pet?.onCursor) {
+  window.pet.onCursor((x, y) => engine.pointerMove(x, y));
+} else {
+  window.addEventListener("pointermove", (e) => lookAt(e.clientX, e.clientY), { passive: true });
+}
 
 window.addEventListener("keydown", (e) => {
   if (e.code === "Space") {
@@ -155,24 +176,40 @@ wheel.addEventListener("pointermove", (e) => {
   if (e.buttons) pickWheel(e);
 });
 
-let dragging: { x: number; y: number; moved: boolean } | null = null;
+type Press = { x: number; y: number; timer: number; armed: boolean; moved: boolean };
+let press: Press | null = null;
 let tapAt = 0;
 let tapTimer = 0;
+
 wrap.addEventListener("pointerdown", (e) => {
-  dragging = { x: e.screenX, y: e.screenY, moved: false };
+  press = {
+    x: e.screenX,
+    y: e.screenY,
+    armed: false,
+    moved: false,
+    timer: window.setTimeout(() => {
+      if (!press) return;
+      press.armed = true;
+      wrap.classList.add("hold");
+      setThrough(false);
+    }, HOLD_MS),
+  };
   wrap.setPointerCapture(e.pointerId);
 });
 wrap.addEventListener("pointermove", (e) => {
-  if (!dragging) return;
-  const dx = e.screenX - dragging.x;
-  const dy = e.screenY - dragging.y;
-  if (Math.hypot(dx, dy) > 3) dragging.moved = true;
+  if (!press) return;
+  const dx = e.screenX - press.x;
+  const dy = e.screenY - press.y;
+  if (!press.armed) return;
+  if (Math.hypot(dx, dy) > 3) press.moved = true;
   if (pet && window.pet) window.pet.moveBy(dx, dy);
-  dragging.x = e.screenX;
-  dragging.y = e.screenY;
+  press.x = e.screenX;
+  press.y = e.screenY;
 });
 wrap.addEventListener("pointerup", () => {
-  if (dragging && !dragging.moved) {
+  if (press) window.clearTimeout(press.timer);
+  wrap.classList.remove("hold");
+  if (press && !press.armed && !press.moved) {
     const now = performance.now();
     if (now - tapAt < 340) {
       window.clearTimeout(tapTimer);
@@ -183,6 +220,9 @@ wrap.addEventListener("pointerup", () => {
       tapTimer = window.setTimeout(() => engine.blink(), 280);
     }
   }
-  dragging = null;
-  if (pet) setThrough(true);
+  press = null;
+  if (pet && !stage.matches(":hover")) {
+    showDock(false);
+    setThrough(true);
+  }
 });
