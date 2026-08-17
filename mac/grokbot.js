@@ -729,7 +729,6 @@
     bounceHold = false;
     bounceCues = [];
     bounceDur = 2.3;
-    bounceCueAt = -1;
     constructor() {
       const rest = getExpression(0);
       this.left = eyeSpring(rest.left);
@@ -1071,8 +1070,7 @@
           max: 0.45 + Math.random() * 0.55,
           hue: Math.random() * 360,
           len: 6 + Math.random() * 10,
-          ang,
-          kind: "dash"
+          ang
         });
       }
     }
@@ -1119,15 +1117,8 @@
         sp.life += dt;
         sp.x += sp.vx * dt;
         sp.y += sp.vy * dt;
-        if (sp.kind === "dot") sp.vy += 260 * dt;
-        if (sp.kind === "ring") {
-          sp.len += 70 * dt;
-          sp.vx *= 0.8;
-          sp.vy *= 0.8;
-        } else {
-          sp.vx *= 0.94;
-          sp.vy *= 0.94;
-        }
+        sp.vx *= 0.96;
+        sp.vy *= 0.96;
       }
       this.sparks = this.sparks.filter((s) => s.life < s.max);
       const fx = this.t.flyX.value * FACE_R * 1.4;
@@ -1226,7 +1217,6 @@
       this.bounceCues = composeBounce();
       const last = this.bounceCues[this.bounceCues.length - 1];
       this.bounceDur = (last?.at ?? 2) + 0.16;
-      this.bounceCueAt = -1;
     }
     tickBounce() {
       let t = this.elapsed - this.bounceT0;
@@ -1246,73 +1236,6 @@
       this.tgt.yaw = cue.tilt;
       this.tgt.bodyScale = 1;
       if (this.expression !== cue.expression) this.expression = cue.expression;
-      if (cue.at !== this.bounceCueAt) {
-        this.bounceCueAt = cue.at;
-        const air = Math.hypot(cue.hopX, cue.hopY);
-        if (air > 0.12) this.burstHopLaunch(cue.hopX, cue.hopY, air);
-        else if (cue.squash < 0.9) this.burstHopLand();
-      }
-    }
-    hopHue(hx, hy) {
-      if (hy > 0.35 && Math.abs(hx) < 0.35) return 48;
-      if (hy < -0.12) return 18;
-      if (hx < -0.2) return 195;
-      if (hx > 0.2) return 318;
-      return 42;
-    }
-    burstHopLaunch(hx, hy, mag) {
-      const ox = hx * FACE_R * 0.78;
-      const oy = -hy * FACE_R * 0.92;
-      const hue = this.hopHue(hx, hy);
-      const n = 5 + Math.floor(mag * 8);
-      for (let i = 0; i < n; i++) {
-        const spread = (Math.random() - 0.5) * 1.1;
-        const ang = Math.atan2(-hy, hx) + spread;
-        const sp = 70 + Math.random() * 90 * mag;
-        this.sparks.push({
-          x: ox + (Math.random() - 0.5) * 10,
-          y: oy + (Math.random() - 0.5) * 10,
-          vx: Math.cos(ang) * sp,
-          vy: Math.sin(ang) * sp,
-          life: 0,
-          max: 0.28 + Math.random() * 0.28,
-          hue: hue + (Math.random() - 0.5) * 28,
-          len: 4 + Math.random() * 8,
-          ang,
-          kind: Math.random() < 0.35 ? "dot" : "dash"
-        });
-      }
-    }
-    burstHopLand() {
-      const feetY = FACE_R * 0.55;
-      for (let i = 0; i < 10; i++) {
-        const ang = Math.PI + (Math.random() - 0.5) * 2.4;
-        const sp = 50 + Math.random() * 80;
-        this.sparks.push({
-          x: (Math.random() - 0.5) * 28,
-          y: feetY,
-          vx: Math.cos(ang) * sp * 1.4,
-          vy: Math.sin(ang) * sp * 0.45,
-          life: 0,
-          max: 0.32 + Math.random() * 0.28,
-          hue: 32 + Math.random() * 36,
-          len: 2.4 + Math.random() * 3.2,
-          ang,
-          kind: "dot"
-        });
-      }
-      this.sparks.push({
-        x: 0,
-        y: feetY,
-        vx: 0,
-        vy: 0,
-        life: 0,
-        max: 0.38,
-        hue: 40,
-        len: 8,
-        ang: 0,
-        kind: "ring"
-      });
     }
     tickGaze() {
       if (this.followPointer && this.pointer.active && !this.demoPlaying) {
@@ -1812,38 +1735,20 @@
     ctx.restore();
   }
   function drawSparks(ctx, engine2) {
-    const hop = engine2.t.hop.value;
-    const hopX = engine2.t.hopX.value;
-    ctx.save();
-    ctx.translate(-hopX * FACE_R * 0.78, hop * FACE_R * 0.92);
     for (const s of engine2.sparks) {
       const u = 1 - s.life / s.max;
       ctx.save();
       ctx.translate(s.x, s.y);
       ctx.rotate(s.ang);
-      if (s.kind === "ring") {
-        ctx.strokeStyle = hueStroke(s.hue, u * 0.7);
-        ctx.lineWidth = 2.2 * u;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, s.len * 1.4, s.len * 0.45, 0, 0, Math.PI * 2);
-        ctx.stroke();
-      } else if (s.kind === "dot") {
-        ctx.fillStyle = hueStroke(s.hue, u);
-        ctx.beginPath();
-        ctx.arc(0, 0, s.len * u, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        ctx.strokeStyle = hueStroke(s.hue, u);
-        ctx.lineWidth = 2.4;
-        ctx.lineCap = "round";
-        ctx.beginPath();
-        ctx.moveTo(-s.len * u, 0);
-        ctx.lineTo(s.len * u, 0);
-        ctx.stroke();
-      }
+      ctx.strokeStyle = hueStroke(s.hue, u);
+      ctx.lineWidth = 2.4;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(-s.len * u, 0);
+      ctx.lineTo(s.len * u, 0);
+      ctx.stroke();
       ctx.restore();
     }
-    ctx.restore();
   }
   function drawDebug(ctx, engine2, theme) {
     ctx.save();

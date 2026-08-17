@@ -364,38 +364,20 @@ function drawTrail(ctx: CanvasRenderingContext2D, engine: GrokBotEngine) {
 }
 
 function drawSparks(ctx: CanvasRenderingContext2D, engine: GrokBotEngine) {
-  const hop = engine.t.hop.value;
-  const hopX = engine.t.hopX.value;
-  ctx.save();
-  ctx.translate(-hopX * FACE_R * 0.78, hop * FACE_R * 0.92);
   for (const s of engine.sparks) {
     const u = 1 - s.life / s.max;
     ctx.save();
     ctx.translate(s.x, s.y);
     ctx.rotate(s.ang);
-    if (s.kind === "ring") {
-      ctx.strokeStyle = hueStroke(s.hue, u * 0.7);
-      ctx.lineWidth = 2.2 * u;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, s.len * 1.4, s.len * 0.45, 0, 0, Math.PI * 2);
-      ctx.stroke();
-    } else if (s.kind === "dot") {
-      ctx.fillStyle = hueStroke(s.hue, u);
-      ctx.beginPath();
-      ctx.arc(0, 0, s.len * u, 0, Math.PI * 2);
-      ctx.fill();
-    } else {
-      ctx.strokeStyle = hueStroke(s.hue, u);
-      ctx.lineWidth = 2.4;
-      ctx.lineCap = "round";
-      ctx.beginPath();
-      ctx.moveTo(-s.len * u, 0);
-      ctx.lineTo(s.len * u, 0);
-      ctx.stroke();
-    }
+    ctx.strokeStyle = hueStroke(s.hue, u);
+    ctx.lineWidth = 2.4;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-s.len * u, 0);
+    ctx.lineTo(s.len * u, 0);
+    ctx.stroke();
     ctx.restore();
   }
-  ctx.restore();
 }
 
 function drawDebug(
