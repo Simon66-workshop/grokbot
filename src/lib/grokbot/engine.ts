@@ -103,6 +103,7 @@ export type Spark = {
   hue: number;
   len: number;
   ang: number;
+  kind: "dash" | "dot" | "ring";
 };
 
 export type Orbit = {
@@ -228,6 +229,7 @@ export class GrokBotEngine {
   private bounceHold = false;
   private bounceCues: BounceCue[] = [];
   private bounceDur = 2.3;
+  private bounceCueAt = -1;
 
   constructor() {
     const rest = getExpression(0);
@@ -597,6 +599,7 @@ export class GrokBotEngine {
         hue: Math.random() * 360,
         len: 6 + Math.random() * 10,
         ang,
+        kind: "dash",
       });
     }
   }
@@ -650,8 +653,15 @@ export class GrokBotEngine {
       sp.life += dt;
       sp.x += sp.vx * dt;
       sp.y += sp.vy * dt;
-      sp.vx *= 0.96;
-      sp.vy *= 0.96;
+      if (sp.kind === "dot") sp.vy += 260 * dt;
+      if (sp.kind === "ring") {
+        sp.len += 70 * dt;
+        sp.vx *= 0.8;
+        sp.vy *= 0.8;
+      } else {
+        sp.vx *= 0.94;
+        sp.vy *= 0.94;
+      }
     }
     this.sparks = this.sparks.filter((s) => s.life < s.max);
 
@@ -772,6 +782,7 @@ export class GrokBotEngine {
     this.bounceCues = composeBounce();
     const last = this.bounceCues[this.bounceCues.length - 1];
     this.bounceDur = (last?.at ?? 2) + 0.16;
+    this.bounceCueAt = -1;
   }
 
   private tickBounce() {
@@ -792,6 +803,76 @@ export class GrokBotEngine {
     this.tgt.yaw = cue.tilt;
     this.tgt.bodyScale = 1;
     if (this.expression !== cue.expression) this.expression = cue.expression;
+    if (cue.at !== this.bounceCueAt) {
+      this.bounceCueAt = cue.at;
+      const air = Math.hypot(cue.hopX, cue.hopY);
+      if (air > 0.12) this.burstHopLaunch(cue.hopX, cue.hopY, air);
+      else if (cue.squash < 0.9) this.burstHopLand();
+    }
+  }
+
+  private hopHue(hx: number, hy: number) {
+    if (hy > 0.35 && Math.abs(hx) < 0.35) return 48;
+    if (hy < -0.12) return 18;
+    if (hx < -0.2) return 195;
+    if (hx > 0.2) return 318;
+    return 42;
+  }
+
+  private burstHopLaunch(hx: number, hy: number, mag: number) {
+    const ox = hx * FACE_R * 0.78;
+    const oy = -hy * FACE_R * 0.92;
+    const hue = this.hopHue(hx, hy);
+    const n = 5 + Math.floor(mag * 8);
+    for (let i = 0; i < n; i++) {
+      const spread = (Math.random() - 0.5) * 1.1;
+      const ang = Math.atan2(-hy, hx) + spread;
+      const sp = 70 + Math.random() * 90 * mag;
+      this.sparks.push({
+        x: ox + (Math.random() - 0.5) * 10,
+        y: oy + (Math.random() - 0.5) * 10,
+        vx: Math.cos(ang) * sp,
+        vy: Math.sin(ang) * sp,
+        life: 0,
+        max: 0.28 + Math.random() * 0.28,
+        hue: hue + (Math.random() - 0.5) * 28,
+        len: 4 + Math.random() * 8,
+        ang,
+        kind: Math.random() < 0.35 ? "dot" : "dash",
+      });
+    }
+  }
+
+  private burstHopLand() {
+    const feetY = FACE_R * 0.55;
+    for (let i = 0; i < 10; i++) {
+      const ang = Math.PI + (Math.random() - 0.5) * 2.4;
+      const sp = 50 + Math.random() * 80;
+      this.sparks.push({
+        x: (Math.random() - 0.5) * 28,
+        y: feetY,
+        vx: Math.cos(ang) * sp * 1.4,
+        vy: Math.sin(ang) * sp * 0.45,
+        life: 0,
+        max: 0.32 + Math.random() * 0.28,
+        hue: 32 + Math.random() * 36,
+        len: 2.4 + Math.random() * 3.2,
+        ang,
+        kind: "dot",
+      });
+    }
+    this.sparks.push({
+      x: 0,
+      y: feetY,
+      vx: 0,
+      vy: 0,
+      life: 0,
+      max: 0.38,
+      hue: 40,
+      len: 8,
+      ang: 0,
+      kind: "ring",
+    });
   }
 
   private tickGaze() {
