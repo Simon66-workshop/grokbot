@@ -321,13 +321,13 @@ export function Desktop() {
       )}
     >
       <ColorWheel value={faceColor || GROK_BLUE} onChange={setColor} compact />
-      <div className="flex flex-wrap justify-center gap-1">
+      <div className="flex w-max max-w-full flex-nowrap items-center justify-center gap-px whitespace-nowrap rounded-full bg-ink/55 p-1 backdrop-blur-sm">
         {MOODS.map((m) => (
           <button
             key={m.label}
             type="button"
             onClick={m.run}
-            className="rounded-full bg-ink/55 px-2.5 py-1 text-[11px] font-medium text-paper backdrop-blur-sm hover:bg-ink/70"
+            className="shrink-0 rounded-full px-1.5 py-1 text-[9px] font-medium text-paper hover:bg-white/10"
           >
             {m.label}
           </button>
@@ -350,7 +350,7 @@ export function Desktop() {
       <div
         ref={widget}
         className={cn(
-          "z-20 flex w-[min(380px,78vw)] flex-col items-center will-change-transform",
+          "z-20 flex w-[min(520px,94vw)] flex-col items-center will-change-transform",
           isPet() ? "relative mx-auto" : "absolute top-0 left-0",
           dockAbove && "flex-col-reverse",
         )}

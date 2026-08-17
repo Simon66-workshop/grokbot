@@ -5,7 +5,7 @@ import fs from "node:fs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const POS_FILE = path.join(app.getPath("userData"), "pet-pos.json");
-const STAGE_W = 440;
+const STAGE_W = 520;
 const STAGE_H = 560;
 const BALL_CY = 210;
 
@@ -43,11 +43,17 @@ function clampToDisplay(x, y, w, h) {
 function create() {
   const cursor = screen.getCursorScreenPoint();
   const saved = loadPos();
+  const placed = clampToDisplay(
+    saved?.x ?? Math.max(16, cursor.x - STAGE_W / 2),
+    saved?.y ?? Math.max(16, cursor.y - BALL_CY),
+    STAGE_W,
+    STAGE_H,
+  );
   win = new BrowserWindow({
     width: STAGE_W,
     height: STAGE_H,
-    x: saved?.x ?? Math.max(16, cursor.x - STAGE_W / 2),
-    y: saved?.y ?? Math.max(16, cursor.y - BALL_CY),
+    x: placed.x,
+    y: placed.y,
     frame: false,
     transparent: true,
     hasShadow: false,
@@ -78,6 +84,12 @@ function create() {
   }
   win.setIgnoreMouseEvents(true, { forward: true });
   win.loadFile(path.join(here, "../mac/index.html"), { query: { pet: "1" } });
+  win.once("ready-to-show", () => {
+    if (!win) return;
+    const [x, y] = win.getPosition();
+    const next = clampToDisplay(x, y, STAGE_W, STAGE_H);
+    if (next.x !== x || next.y !== y) win.setPosition(next.x, next.y);
+  });
   win.on("moved", savePos);
   win.on("close", savePos);
 

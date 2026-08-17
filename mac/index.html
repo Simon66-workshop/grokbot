@@ -18,7 +18,8 @@
       .stage {
         position: relative;
         width: 100%;
-        min-height: 100%;
+        height: 100%;
+        overflow: visible;
       }
       .face {
         width: 440px;
@@ -35,14 +36,14 @@
       #wheel { display: block; width: 80px; height: 80px; cursor: crosshair; }
       .dock {
         position: absolute;
-        left: 50%;
+        left: 0;
+        right: 0;
         top: 79%;
-        transform: translateX(-50%);
         display: flex;
         flex-direction: column;
         align-items: center;
         gap: 6px;
-        padding: 0 0 8px;
+        padding: 0 8px 10px;
         opacity: 0;
         pointer-events: none;
         transition: opacity 140ms ease;
@@ -60,23 +61,27 @@
       }
       .bar {
         display: flex;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         justify-content: center;
-        gap: 3px;
-        padding: 4px;
-        max-width: 260px;
+        align-items: center;
+        gap: 1px;
+        padding: 4px 6px;
+        width: max-content;
+        max-width: 100%;
         background: rgba(22, 21, 19, 0.55);
         border-radius: 999px;
         backdrop-filter: blur(16px);
+        white-space: nowrap;
       }
       .bar button {
         border: 0;
         background: transparent;
         color: #fffcf6;
-        font: 500 10px/1 "SF Pro Text", sans-serif;
-        padding: 6px 7px;
+        font: 500 9px/1 "SF Pro Text", sans-serif;
+        padding: 6px 6px;
         border-radius: 999px;
         cursor: pointer;
+        flex: none;
       }
       .bar button:hover { background: rgba(255,255,255,0.12); }
     </style>
