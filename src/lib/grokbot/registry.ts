@@ -1,11 +1,12 @@
 import type { GrokBotEngine } from "./engine";
 
-let current: GrokBotEngine | null = null;
+const stack: GrokBotEngine[] = [];
 
 export function registerEngine(engine: GrokBotEngine | null) {
-  current = engine;
+  if (engine) stack.push(engine);
+  else stack.pop();
 }
 
 export function getEngine() {
-  return current;
+  return stack[stack.length - 1] ?? null;
 }

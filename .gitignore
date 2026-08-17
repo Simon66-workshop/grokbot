@@ -3,6 +3,7 @@ node_modules
 .vinxi
 .tanstack
 dist
+dist-pet
 .DS_Store
 *.log
 /tmp
@@ -12,3 +13,11 @@ vendor
 .grok
 pw-browsers
 public/wallpaper.jpg
+.env
+.env.*
+*.pem
+*.p12
+*.key
+*.mobileprovision
+.vercel
+.node_modules.lock

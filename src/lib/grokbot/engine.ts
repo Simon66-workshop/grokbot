@@ -16,6 +16,7 @@ import { EXPRESSIONS, getExpression } from "./expressions";
 import { bodyForShape } from "./shapes";
 import { exclaimStem, stadiumPath } from "./paths";
 import { DEMO_CUES } from "./demo";
+import { SCENES, writeScene, type SceneId } from "./scenes";
 
 type BounceCue = {
   at: number;
@@ -228,6 +229,9 @@ export class GrokBotEngine {
   private bounceHold = false;
   private bounceCues: BounceCue[] = [];
   private bounceDur = 2.3;
+  private lastAir = false;
+  scene: SceneId = "companion";
+  private listeners = new Map<string, Set<() => void>>();
 
   constructor() {
     const rest = getExpression(0);
@@ -293,6 +297,34 @@ export class GrokBotEngine {
       { rx: 96, ry: 70, tilt: 1.05, yaw: 2.2, speed: 0.48, phase: 2.6, hueA: 165, hueB: 195, width: 4.5 },
       { rx: 124, ry: 28, tilt: 0.25, yaw: 0.6, speed: 1.05, phase: 0.8, hueA: 300, hueB: 170, width: 4 },
     ];
+  }
+
+  on(ev: "blink" | "land" | "dock", fn: () => void) {
+    let set = this.listeners.get(ev);
+    if (!set) {
+      set = new Set();
+      this.listeners.set(ev, set);
+    }
+    set.add(fn);
+    return () => set!.delete(fn);
+  }
+
+  emit(ev: "blink" | "land" | "dock") {
+    this.listeners.get(ev)?.forEach((fn) => fn());
+  }
+
+  setScene(id: SceneId) {
+    this.scene = id;
+    writeScene(id);
+    const policy = SCENES[id].idle;
+    this.setFollowPointer(policy.followPointer);
+    this.setAutoIdle(true);
+    if (id === "demo") {
+      this.playDemo();
+      return;
+    }
+    this.stopDemo();
+    this.goIdle();
   }
 
   setExpression(id: number) {
@@ -364,6 +396,7 @@ export class GrokBotEngine {
     this.tgt.bodyScale = 0.965;
     this.stateUntil = this.elapsed + 0.11;
     if (this.state === "idle") this.state = "blink";
+    this.emit("blink");
   }
 
   reset() {
@@ -407,6 +440,7 @@ export class GrokBotEngine {
     this.tgt.squash = 1;
     this.bounceHold = false;
     this.nextBlink = this.elapsed + 2.4 + Math.random() * 2.6;
+    this.stateUntil = 0;
   }
 
   play(state: StateId) {
@@ -687,13 +721,14 @@ export class GrokBotEngine {
   }
 
   private tickBehaviors(dt: number) {
+    const policy = SCENES[this.scene].idle;
     if (
       this.autoIdle &&
       this.state === "idle" &&
       !this.demoPlaying &&
       !this.reducedMotion
     ) {
-      this.tgt.bodyScale = 1 + Math.sin(this.elapsed * 1.05) * 0.014;
+      this.tgt.bodyScale = 1 + Math.sin(this.elapsed * 1.05) * policy.breathe;
     }
 
     if (this.state === "blink" && this.elapsed > this.stateUntil) {
@@ -729,41 +764,45 @@ export class GrokBotEngine {
       !this.demoPlaying &&
       this.elapsed > this.nextBlink
     ) {
+      if (this.reducedMotion) {
+        if (policy.blink) this.blink();
+        else this.nextBlink = this.elapsed + 4;
+        return;
+      }
       const roll = Math.random();
-      if (roll < 0.16) {
+      if (policy.autoBounce > 0 && roll < policy.autoBounce) {
         this.play("bounce");
         this.bounceHold = false;
         this.stateUntil = this.elapsed + this.bounceDur;
-      } else if (roll < 0.34) {
+      } else if (policy.autoLook && roll < policy.autoBounce + 0.18) {
         this.play("look");
         this.stateUntil = this.elapsed + 1.1;
-      } else if (roll < 0.5) {
+      } else if (policy.blink) {
         this.blink();
-        this.nextBlink = this.elapsed + 0.42;
+        if (roll < 0.5) this.nextBlink = this.elapsed + 0.42;
       } else {
-        this.blink();
+        this.nextBlink = this.elapsed + 3 + Math.random() * 4;
       }
     }
 
     if (this.state !== "idle" && this.state !== "sleep" && this.state !== "blink") {
       if (this.stateUntil && this.elapsed > this.stateUntil && !this.demoPlaying) {
-        if (this.state === "exclaim-fly" || this.state === "trail" || this.state === "bounce") {
-          this.tgt.flyX = 0;
-          this.tgt.flyY = 0;
-          this.tgt.hop = 0;
-          this.tgt.hopX = 0;
-          this.tgt.squash = 1;
-          this.tgt.bodyScale = 1;
-          this.tgt.eyeAlpha = 1;
-          this.tgt.faceW = 1;
-          this.tgt.exclaimW = 0;
-          this.expression = 0;
-          this.state = "idle";
-        } else if (this.state === "loading" || this.state === "shrink") {
-          /* hold until user changes */
-        } else if (this.state === "orbits" || this.state === "think" || this.state === "streaks") {
-          /* hold */
-        }
+        if (this.state === "egg" || this.state === "hex" || this.state === "triangle") return;
+        this.tgt.flyX = 0;
+        this.tgt.flyY = 0;
+        this.tgt.hop = 0;
+        this.tgt.hopX = 0;
+        this.tgt.squash = 1;
+        this.tgt.bodyScale = 1;
+        this.tgt.eyeAlpha = 1;
+        this.tgt.faceW = 1;
+        this.tgt.exclaimW = 0;
+        this.tgt.dotsW = 0;
+        this.tgt.orbitW = 0;
+        this.tgt.streakW = 0;
+        this.tgt.satW = 0;
+        this.state = "idle";
+        this.nextBlink = this.elapsed + 2.2 + Math.random() * 2;
       }
     }
   }
@@ -792,9 +831,13 @@ export class GrokBotEngine {
     this.tgt.yaw = cue.tilt;
     this.tgt.bodyScale = 1;
     if (this.expression !== cue.expression) this.expression = cue.expression;
+    const air = Math.hypot(cue.hopX, cue.hopY) > 0.12;
+    if (this.lastAir && !air) this.emit("land");
+    this.lastAir = air;
   }
 
   private tickGaze() {
+    const policy = SCENES[this.scene].idle;
     if (this.followPointer && this.pointer.active && !this.demoPlaying) {
       this.tgt.gazeX = this.pointer.x;
       this.tgt.gazeY = this.pointer.y;
@@ -802,7 +845,7 @@ export class GrokBotEngine {
         this.tgt.yaw = this.pointer.x * 0.48;
         this.tgt.pitch = this.pointer.y * 0.32;
       }
-    } else if (this.autoIdle && this.state === "idle" && !this.demoPlaying) {
+    } else if (policy.autoLook && this.autoIdle && this.state === "idle" && !this.demoPlaying) {
       const t = this.elapsed;
       this.tgt.gazeX = 0.28 * Math.sin(t * 0.33) * Math.sin(t * 0.17);
       this.tgt.gazeY = 0.16 * Math.sin(t * 0.27 + 1.1);

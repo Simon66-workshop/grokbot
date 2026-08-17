@@ -1,5 +1,11 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
+function listen(channel, fn) {
+  const wrapped = (_e, ...args) => fn(...args);
+  ipcRenderer.on(channel, wrapped);
+  return () => ipcRenderer.removeListener(channel, wrapped);
+}
+
 contextBridge.exposeInMainWorld("pet", {
   isPet: true,
   moveBy(dx, dy) {
@@ -8,13 +14,16 @@ contextBridge.exposeInMainWorld("pet", {
   setClickThrough(on) {
     ipcRenderer.send("pet-click-through", on);
   },
-  setDock(open) {
-    ipcRenderer.send("pet-dock", open);
-  },
   onCursor(fn) {
-    ipcRenderer.on("pet-cursor", (_e, x, y) => fn(x, y));
+    return listen("pet-cursor", fn);
   },
   onSide(fn) {
-    ipcRenderer.on("pet-side", (_e, s) => fn(s));
+    return listen("pet-side", fn);
+  },
+  onScene(fn) {
+    return listen("pet-scene", fn);
+  },
+  setScene(scene) {
+    ipcRenderer.send("pet-set-scene", scene);
   },
 });

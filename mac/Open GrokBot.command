@@ -4,11 +4,16 @@ ROOT="$(cd "$DIR/.." && pwd)"
 cd "$ROOT"
 
 ELECTRON="$ROOT/node_modules/.bin/electron"
+ESBUILD="$ROOT/node_modules/.bin/esbuild"
 
 if [ ! -x "$ELECTRON" ]; then
   if command -v npm >/dev/null 2>&1; then
     npm install --legacy-peer-deps
   fi
+fi
+
+if [ -x "$ESBUILD" ]; then
+  "$ESBUILD" "$ROOT/mac/companion.ts" --bundle --format=iife --outfile="$ROOT/mac/grokbot.js" --platform=browser
 fi
 
 if [ -x "$ELECTRON" ]; then

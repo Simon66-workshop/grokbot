@@ -593,6 +593,58 @@
     }
   ];
 
+  // src/lib/grokbot/scenes.ts
+  var SCENES = {
+    work: {
+      label: "Work",
+      hint: "Quiet. Breath and blink only.",
+      idle: {
+        breathe: 8e-3,
+        blink: true,
+        autoLook: false,
+        autoBounce: 0,
+        followPointer: false
+      }
+    },
+    companion: {
+      label: "Play",
+      hint: "Looks at you. Sometimes hops.",
+      idle: {
+        breathe: 0.016,
+        blink: true,
+        autoLook: true,
+        autoBounce: 0.16,
+        followPointer: true
+      }
+    },
+    demo: {
+      label: "Demo",
+      hint: "Plays the tour.",
+      idle: {
+        breathe: 0.012,
+        blink: true,
+        autoLook: false,
+        autoBounce: 0,
+        followPointer: false
+      }
+    }
+  };
+  var SCENE_KEY = "grok-scene";
+  function readScene() {
+    try {
+      const v = localStorage.getItem(SCENE_KEY);
+      if (v === "work" || v === "companion" || v === "demo") return v;
+    } catch {
+    }
+    return "companion";
+  }
+  function writeScene(id) {
+    try {
+      localStorage.setItem(SCENE_KEY, id);
+    } catch {
+    }
+  }
+
   // src/lib/grokbot/engine.ts
   var BOUNCE_DIRS = [
     { x: 0, y: 1, faces: [5, 3, 20, 10] },
@@ -729,6 +781,9 @@
     bounceHold = false;
     bounceCues = [];
     bounceDur = 2.3;
+    lastAir = false;
+    scene = "companion";
+    listeners = /* @__PURE__ */ new Map();
     constructor() {
       const rest = getExpression(0);
       this.left = eyeSpring(rest.left);
@@ -792,6 +847,31 @@
         { rx: 124, ry: 28, tilt: 0.25, yaw: 0.6, speed: 1.05, phase: 0.8, hueA: 300, hueB: 170, width: 4 }
       ];
     }
+    on(ev, fn) {
+      let set = this.listeners.get(ev);
+      if (!set) {
+        set = /* @__PURE__ */ new Set();
+        this.listeners.set(ev, set);
+      }
+      set.add(fn);
+      return () => set.delete(fn);
+    }
+    emit(ev) {
+      this.listeners.get(ev)?.forEach((fn) => fn());
+    }
+    setScene(id) {
+      this.scene = id;
+      writeScene(id);
+      const policy = SCENES[id].idle;
+      this.setFollowPointer(policy.followPointer);
+      this.setAutoIdle(true);
+      if (id === "demo") {
+        this.playDemo();
+        return;
+      }
+      this.stopDemo();
+      this.goIdle();
+    }
     setExpression(id) {
       this.expression = (id % 25 + 25) % 25;
       if (this.state === "sleep") this.goIdle();
@@ -847,6 +927,7 @@
       this.tgt.bodyScale = 0.965;
       this.stateUntil = this.elapsed + 0.11;
       if (this.state === "idle") this.state = "blink";
+      this.emit("blink");
     }
     reset() {
       this.stopDemo();
@@ -888,6 +969,7 @@
       this.tgt.squash = 1;
       this.bounceHold = false;
       this.nextBlink = this.elapsed + 2.4 + Math.random() * 2.6;
+      this.stateUntil = 0;
     }
     play(state) {
       this.state = state;
@@ -1151,8 +1233,9 @@
       }
     }
     tickBehaviors(dt) {
+      const policy = SCENES[this.scene].idle;
       if (this.autoIdle && this.state === "idle" && !this.demoPlaying && !this.reducedMotion) {
-        this.tgt.bodyScale = 1 + Math.sin(this.elapsed * 1.05) * 0.014;
+        this.tgt.bodyScale = 1 + Math.sin(this.elapsed * 1.05) * policy.breathe;
       }
       if (this.state === "blink" && this.elapsed > this.stateUntil) {
         this.tgt.blink = 1;
@@ -1178,38 +1261,44 @@
         this.tickBounce();
       }
       if (this.autoIdle && this.state === "idle" && !this.demoPlaying && this.elapsed > this.nextBlink) {
+        if (this.reducedMotion) {
+          if (policy.blink) this.blink();
+          else this.nextBlink = this.elapsed + 4;
+          return;
+        }
         const roll = Math.random();
-        if (roll < 0.16) {
+        if (policy.autoBounce > 0 && roll < policy.autoBounce) {
           this.play("bounce");
           this.bounceHold = false;
           this.stateUntil = this.elapsed + this.bounceDur;
-        } else if (roll < 0.34) {
+        } else if (policy.autoLook && roll < policy.autoBounce + 0.18) {
           this.play("look");
           this.stateUntil = this.elapsed + 1.1;
-        } else if (roll < 0.5) {
+        } else if (policy.blink) {
           this.blink();
-          this.nextBlink = this.elapsed + 0.42;
+          if (roll < 0.5) this.nextBlink = this.elapsed + 0.42;
         } else {
-          this.blink();
+          this.nextBlink = this.elapsed + 3 + Math.random() * 4;
         }
       }
       if (this.state !== "idle" && this.state !== "sleep" && this.state !== "blink") {
         if (this.stateUntil && this.elapsed > this.stateUntil && !this.demoPlaying) {
-          if (this.state === "exclaim-fly" || this.state === "trail" || this.state === "bounce") {
-            this.tgt.flyX = 0;
-            this.tgt.flyY = 0;
-            this.tgt.hop = 0;
-            this.tgt.hopX = 0;
-            this.tgt.squash = 1;
-            this.tgt.bodyScale = 1;
-            this.tgt.eyeAlpha = 1;
-            this.tgt.faceW = 1;
-            this.tgt.exclaimW = 0;
-            this.expression = 0;
-            this.state = "idle";
-          } else if (this.state === "loading" || this.state === "shrink") {
-          } else if (this.state === "orbits" || this.state === "think" || this.state === "streaks") {
-          }
+          if (this.state === "egg" || this.state === "hex" || this.state === "triangle") return;
+          this.tgt.flyX = 0;
+          this.tgt.flyY = 0;
+          this.tgt.hop = 0;
+          this.tgt.hopX = 0;
+          this.tgt.squash = 1;
+          this.tgt.bodyScale = 1;
+          this.tgt.eyeAlpha = 1;
+          this.tgt.faceW = 1;
+          this.tgt.exclaimW = 0;
+          this.tgt.dotsW = 0;
+          this.tgt.orbitW = 0;
+          this.tgt.streakW = 0;
+          this.tgt.satW = 0;
+          this.state = "idle";
+          this.nextBlink = this.elapsed + 2.2 + Math.random() * 2;
         }
       }
     }
@@ -1236,8 +1325,12 @@
       this.tgt.yaw = cue.tilt;
       this.tgt.bodyScale = 1;
       if (this.expression !== cue.expression) this.expression = cue.expression;
+      const air = Math.hypot(cue.hopX, cue.hopY) > 0.12;
+      if (this.lastAir && !air) this.emit("land");
+      this.lastAir = air;
     }
     tickGaze() {
+      const policy = SCENES[this.scene].idle;
       if (this.followPointer && this.pointer.active && !this.demoPlaying) {
         this.tgt.gazeX = this.pointer.x;
         this.tgt.gazeY = this.pointer.y;
@@ -1245,7 +1338,7 @@
           this.tgt.yaw = this.pointer.x * 0.48;
           this.tgt.pitch = this.pointer.y * 0.32;
         }
-      } else if (this.autoIdle && this.state === "idle" && !this.demoPlaying) {
+      } else if (policy.autoLook && this.autoIdle && this.state === "idle" && !this.demoPlaying) {
         const t = this.elapsed;
         this.tgt.gazeX = 0.28 * Math.sin(t * 0.33) * Math.sin(t * 0.17);
         this.tgt.gazeY = 0.16 * Math.sin(t * 0.27 + 1.1);
@@ -1395,14 +1488,14 @@
     }
     return null;
   }
-  function drawColorWheel(ctx, size, current) {
+  function drawColorWheel(ctx2, size, current) {
     const cx = size / 2;
     const cy = size / 2;
     const outer = size / 2 - 1;
     const ringIn = outer - 16;
     const disc = ringIn - 7;
-    ctx.clearRect(0, 0, size, size);
-    const img = ctx.createImageData(size, size);
+    ctx2.clearRect(0, 0, size, size);
+    const img = ctx2.createImageData(size, size);
     const data = img.data;
     for (let py = 0; py < size; py++) {
       for (let px = 0; px < size; px++) {
@@ -1418,197 +1511,197 @@
         data[i + 3] = 255;
       }
     }
-    ctx.putImageData(img, 0, 0);
+    ctx2.putImageData(img, 0, 0);
     const segs = 96;
     for (let i = 0; i < segs; i++) {
       const a0 = i / segs * Math.PI * 2 - Math.PI / 2;
       const a1 = (i + 1.15) / segs * Math.PI * 2 - Math.PI / 2;
-      ctx.beginPath();
-      ctx.arc(cx, cy, outer, a0, a1);
-      ctx.arc(cx, cy, ringIn, a1, a0, true);
-      ctx.closePath();
-      ctx.fillStyle = hsvToHex(i / segs * 360, 1, 1);
-      ctx.fill();
+      ctx2.beginPath();
+      ctx2.arc(cx, cy, outer, a0, a1);
+      ctx2.arc(cx, cy, ringIn, a1, a0, true);
+      ctx2.closePath();
+      ctx2.fillStyle = hsvToHex(i / segs * 360, 1, 1);
+      ctx2.fill();
     }
-    ctx.beginPath();
-    ctx.arc(cx, cy, disc + 0.5, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(255,255,255,0.35)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
+    ctx2.beginPath();
+    ctx2.arc(cx, cy, disc + 0.5, 0, Math.PI * 2);
+    ctx2.strokeStyle = "rgba(255,255,255,0.35)";
+    ctx2.lineWidth = 1;
+    ctx2.stroke();
     const ringA = (current.h - 90) * Math.PI / 180;
     const ringR = (outer + ringIn) / 2;
-    ctx.beginPath();
-    ctx.arc(cx + Math.cos(ringA) * ringR, cy + Math.sin(ringA) * ringR, 5.5, 0, Math.PI * 2);
-    ctx.fillStyle = "#fff";
-    ctx.fill();
-    ctx.strokeStyle = "rgba(20,18,16,0.45)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
+    ctx2.beginPath();
+    ctx2.arc(cx + Math.cos(ringA) * ringR, cy + Math.sin(ringA) * ringR, 5.5, 0, Math.PI * 2);
+    ctx2.fillStyle = "#fff";
+    ctx2.fill();
+    ctx2.strokeStyle = "rgba(20,18,16,0.45)";
+    ctx2.lineWidth = 1;
+    ctx2.stroke();
     const discA = (current.h - 90) * Math.PI / 180;
     const discR = current.s * disc;
-    ctx.beginPath();
-    ctx.arc(cx + Math.cos(discA) * discR, cy + Math.sin(discA) * discR, 4.5, 0, Math.PI * 2);
-    ctx.fillStyle = "#fff";
-    ctx.fill();
-    ctx.strokeStyle = "rgba(20,18,16,0.45)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
+    ctx2.beginPath();
+    ctx2.arc(cx + Math.cos(discA) * discR, cy + Math.sin(discA) * discR, 4.5, 0, Math.PI * 2);
+    ctx2.fillStyle = "#fff";
+    ctx2.fill();
+    ctx2.strokeStyle = "rgba(20,18,16,0.45)";
+    ctx2.lineWidth = 1;
+    ctx2.stroke();
   }
 
   // src/lib/grokbot/renderer.ts
-  function fillPath(ctx, pts) {
+  function fillPath(ctx2, pts) {
     if (!pts.length) return;
-    ctx.beginPath();
-    ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-    ctx.closePath();
+    ctx2.beginPath();
+    ctx2.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx2.lineTo(pts[i].x, pts[i].y);
+    ctx2.closePath();
   }
   function hueStroke(h, a = 1) {
     return `hsla(${h}, 72%, 62%, ${a})`;
   }
-  function drawGrokBot(ctx, engine2, cssSize, theme, opts) {
+  function drawGrokBot(ctx2, engine, cssSize, theme, opts) {
     const dpr = cssSize;
-    ctx.clearRect(0, 0, dpr, dpr);
-    ctx.save();
-    ctx.translate(dpr / 2, dpr / 2);
+    ctx2.clearRect(0, 0, dpr, dpr);
+    ctx2.save();
+    ctx2.translate(dpr / 2, dpr / 2);
     const faceScale = opts?.faceScale ?? 0.31;
     const scale = dpr * faceScale / FACE_R;
-    ctx.scale(scale, scale);
-    if (faceScale > 0.28) ctx.translate(0, -FACE_R * 0.06);
-    const face = resolveFaceHex(engine2.faceColor);
+    ctx2.scale(scale, scale);
+    if (faceScale > 0.28) ctx2.translate(0, -FACE_R * 0.06);
+    const face = resolveFaceHex(engine.faceColor);
     const eyeFill = theme.eye;
-    const spin = engine2.t.spin.value;
-    if (spin) ctx.rotate(spin * Math.sin(performance.now() / 900) * 0.35);
-    const flyX = engine2.t.flyX.value * FACE_R * 1.45;
-    const flyY = engine2.t.flyY.value * FACE_R * 1.45;
-    const hop = engine2.t.hop.value;
-    const hopX = engine2.t.hopX.value;
-    const squash = Math.max(0.45, engine2.t.squash.value);
-    ctx.translate(flyX + hopX * FACE_R * 0.7, flyY - hop * FACE_R * 0.78);
-    const orbitW = engine2.t.orbitW.value;
-    const streakW = engine2.t.streakW.value;
-    const bodyScale = Math.max(0.04, engine2.t.bodyScale.value);
-    const dotsW = engine2.t.dotsW.value;
-    const exclaimW = engine2.t.exclaimW.value;
-    const satW = engine2.t.satW.value;
-    const faceW = engine2.t.faceW.value;
-    const lookX = engine2.t.gazeX.value + engine2.t.yaw.value * 0.55;
-    const lookY = engine2.t.gazeY.value + engine2.t.pitch.value * 0.45;
-    drawTrail(ctx, engine2);
-    if (orbitW > 0.02) drawOrbits(ctx, engine2, orbitW, -1);
-    if (streakW > 0.02) drawStreaks(ctx, engine2, streakW, -1);
+    const spin = engine.t.spin.value;
+    if (spin) ctx2.rotate(spin * Math.sin(performance.now() / 900) * 0.35);
+    const flyX = engine.t.flyX.value * FACE_R * 1.45;
+    const flyY = engine.t.flyY.value * FACE_R * 1.45;
+    const hop = engine.t.hop.value;
+    const hopX = engine.t.hopX.value;
+    const squash = Math.max(0.45, engine.t.squash.value);
+    ctx2.translate(flyX + hopX * FACE_R * 0.7, flyY - hop * FACE_R * 0.78);
+    const orbitW = engine.t.orbitW.value;
+    const streakW = engine.t.streakW.value;
+    const bodyScale = Math.max(0.04, engine.t.bodyScale.value);
+    const dotsW = engine.t.dotsW.value;
+    const exclaimW = engine.t.exclaimW.value;
+    const satW = engine.t.satW.value;
+    const faceW = engine.t.faceW.value;
+    const lookX = engine.t.gazeX.value + engine.t.yaw.value * 0.55;
+    const lookY = engine.t.gazeY.value + engine.t.pitch.value * 0.45;
+    drawTrail(ctx2, engine);
+    if (orbitW > 0.02) drawOrbits(ctx2, engine, orbitW, -1);
+    if (streakW > 0.02) drawStreaks(ctx2, engine, streakW, -1);
     const hideBody = dotsW > 0.45;
     if (!hideBody && faceW > 0.08) {
-      drawContactShadow(ctx, faceW, bodyScale, hop, hopX, lookX, lookY);
+      drawContactShadow(ctx2, faceW, bodyScale, hop, hopX, lookX, lookY);
     }
-    ctx.save();
-    ctx.translate(lookX * 4, lookY * 3.5);
-    ctx.rotate(lookX * 0.04);
-    ctx.scale(
+    ctx2.save();
+    ctx2.translate(lookX * 4, lookY * 3.5);
+    ctx2.rotate(lookX * 0.04);
+    ctx2.scale(
       1 + lookX * lookX * 0.03 - lookY * lookY * 0.015,
       1 + lookY * lookY * 0.025 - lookX * lookX * 0.018
     );
-    ctx.scale(bodyScale * (1 / squash), bodyScale * squash);
-    const body = engine2.bodyPoints();
+    ctx2.scale(bodyScale * (1 / squash), bodyScale * squash);
+    const body = engine.bodyPoints();
     if (!hideBody && (faceW > 0.02 || exclaimW > 0.02)) {
-      ctx.globalAlpha = Math.max(faceW, exclaimW);
-      fillPath(ctx, body);
-      ctx.fillStyle = face;
-      ctx.fill();
-      shadeSphere(ctx, body, face, lookX, lookY);
-      ctx.globalAlpha = 1;
+      ctx2.globalAlpha = Math.max(faceW, exclaimW);
+      fillPath(ctx2, body);
+      ctx2.fillStyle = face;
+      ctx2.fill();
+      shadeSphere(ctx2, body, face, lookX, lookY);
+      ctx2.globalAlpha = 1;
     }
-    if (!hideBody && faceW > 0.05 && engine2.t.eyeAlpha.value > 0.02) {
-      ctx.save();
-      fillPath(ctx, body);
-      ctx.clip();
-      const L = engine2.projectedEye("left");
-      const R = engine2.projectedEye("right");
+    if (!hideBody && faceW > 0.05 && engine.t.eyeAlpha.value > 0.02) {
+      ctx2.save();
+      fillPath(ctx2, body);
+      ctx2.clip();
+      const L = engine.projectedEye("left");
+      const R = engine.projectedEye("right");
       const eyes = L.depth <= R.depth ? [L, R] : [R, L];
       for (const eye of eyes) {
         if (eye.eye.alpha < 0.02) continue;
         const a = clamp(eye.eye.alpha * faceW, 0, 1);
-        ctx.globalAlpha = a;
-        fillPath(ctx, eye.path);
-        ctx.fillStyle = eyeFill;
-        ctx.fill();
+        ctx2.globalAlpha = a;
+        fillPath(ctx2, eye.path);
+        ctx2.fillStyle = eyeFill;
+        ctx2.fill();
       }
-      ctx.restore();
-      ctx.globalAlpha = 1;
+      ctx2.restore();
+      ctx2.globalAlpha = 1;
     }
-    ctx.restore();
+    ctx2.restore();
     if (exclaimW > 0.05) {
-      drawExclaimDot(ctx, face, exclaimW, bodyScale);
+      drawExclaimDot(ctx2, face, exclaimW, bodyScale);
     }
-    if (dotsW > 0.04) drawLoadingDots(ctx, engine2, face, theme, dotsW);
-    if (satW > 0.04) drawSatellites(ctx, engine2, face, theme, satW);
-    if (orbitW > 0.02) drawOrbits(ctx, engine2, orbitW, 1);
-    if (streakW > 0.02) drawStreaks(ctx, engine2, streakW, 1);
-    drawSparks(ctx, engine2);
-    if (engine2.debug) drawDebug(ctx, engine2, theme);
-    ctx.restore();
+    if (dotsW > 0.04) drawLoadingDots(ctx2, engine, face, theme, dotsW);
+    if (satW > 0.04) drawSatellites(ctx2, engine, face, theme, satW);
+    if (orbitW > 0.02) drawOrbits(ctx2, engine, orbitW, 1);
+    if (streakW > 0.02) drawStreaks(ctx2, engine, streakW, 1);
+    drawSparks(ctx2, engine);
+    if (engine.debug) drawDebug(ctx2, engine, theme);
+    ctx2.restore();
   }
-  function drawContactShadow(ctx, faceW, bodyScale, hop, hopX, lookX, lookY) {
+  function drawContactShadow(ctx2, faceW, bodyScale, hop, hopX, lookX, lookY) {
     const fade = faceW * bodyScale * (1 - hop * 0.45);
     const x = lookX * 8 - hopX * FACE_R * 0.22;
     const y = FACE_R * 0.94 * bodyScale + 6 + lookY * 3 + hop * FACE_R * 0.78;
-    ctx.save();
-    ctx.fillStyle = "#1a1814";
-    ctx.globalAlpha = 0.09 * fade;
-    ctx.beginPath();
-    ctx.ellipse(x, y + 4, 68 * bodyScale, 11 * bodyScale, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 0.07 * fade;
-    ctx.beginPath();
-    ctx.ellipse(x, y + 1, 42 * bodyScale, 6.5 * bodyScale, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
+    ctx2.save();
+    ctx2.fillStyle = "#1a1814";
+    ctx2.globalAlpha = 0.09 * fade;
+    ctx2.beginPath();
+    ctx2.ellipse(x, y + 4, 68 * bodyScale, 11 * bodyScale, 0, 0, Math.PI * 2);
+    ctx2.fill();
+    ctx2.globalAlpha = 0.07 * fade;
+    ctx2.beginPath();
+    ctx2.ellipse(x, y + 1, 42 * bodyScale, 6.5 * bodyScale, 0, 0, Math.PI * 2);
+    ctx2.fill();
+    ctx2.restore();
   }
-  function shadeSphere(ctx, body, faceHex2, lookX, lookY) {
-    ctx.save();
-    fillPath(ctx, body);
-    ctx.clip();
+  function shadeSphere(ctx2, body, faceHex, lookX, lookY) {
+    ctx2.save();
+    fillPath(ctx2, body);
+    ctx2.clip();
     const lx = -40 - lookX * 36;
     const ly = -48 - lookY * 28;
-    const lum = luminance(faceHex2);
+    const lum = luminance(faceHex);
     const hi = 0.12 + (1 - lum) * 0.2;
     const sh = 0.16 + lum * 0.22;
-    const volume = ctx.createRadialGradient(lx, ly, 6, lx * 0.15, ly * 0.1, FACE_R * 1.38);
+    const volume = ctx2.createRadialGradient(lx, ly, 6, lx * 0.15, ly * 0.1, FACE_R * 1.38);
     volume.addColorStop(0, `rgba(255,255,255,${hi})`);
     volume.addColorStop(0.18, `rgba(255,255,255,${hi * 0.42})`);
     volume.addColorStop(0.48, "rgba(255,255,255,0)");
     volume.addColorStop(0.78, `rgba(8,10,24,${sh * 0.55})`);
     volume.addColorStop(1, `rgba(4,6,16,${sh})`);
-    ctx.fillStyle = volume;
-    ctx.fillRect(-FACE_R * 1.5, -FACE_R * 1.5, FACE_R * 3, FACE_R * 3);
-    const spec = ctx.createRadialGradient(lx * 0.72, ly * 0.72, 0, lx * 0.72, ly * 0.72, 34);
+    ctx2.fillStyle = volume;
+    ctx2.fillRect(-FACE_R * 1.5, -FACE_R * 1.5, FACE_R * 3, FACE_R * 3);
+    const spec = ctx2.createRadialGradient(lx * 0.72, ly * 0.72, 0, lx * 0.72, ly * 0.72, 34);
     spec.addColorStop(0, `rgba(255,255,255,${hi})`);
     spec.addColorStop(0.35, `rgba(255,255,255,${hi * 0.3})`);
     spec.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = spec;
-    ctx.fillRect(-FACE_R * 1.5, -FACE_R * 1.5, FACE_R * 3, FACE_R * 3);
+    ctx2.fillStyle = spec;
+    ctx2.fillRect(-FACE_R * 1.5, -FACE_R * 1.5, FACE_R * 3, FACE_R * 3);
     const rimX = 52 + lookX * 20;
     const rimY = 18 + lookY * 16;
-    const rim = ctx.createRadialGradient(rimX, rimY, FACE_R * 0.35, 0, 0, FACE_R * 1.02);
+    const rim = ctx2.createRadialGradient(rimX, rimY, FACE_R * 0.35, 0, 0, FACE_R * 1.02);
     rim.addColorStop(0, "rgba(255,255,255,0)");
     rim.addColorStop(0.72, "rgba(255,255,255,0)");
     rim.addColorStop(0.9, `rgba(255,255,255,${0.08 + (1 - lum) * 0.12})`);
     rim.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = rim;
-    ctx.fillRect(-FACE_R * 1.5, -FACE_R * 1.5, FACE_R * 3, FACE_R * 3);
-    ctx.restore();
+    ctx2.fillStyle = rim;
+    ctx2.fillRect(-FACE_R * 1.5, -FACE_R * 1.5, FACE_R * 3, FACE_R * 3);
+    ctx2.restore();
   }
-  function drawExclaimDot(ctx, face, w, bodyScale) {
-    ctx.save();
-    ctx.globalAlpha = w;
+  function drawExclaimDot(ctx2, face, w, bodyScale) {
+    ctx2.save();
+    ctx2.globalAlpha = w;
     const y = FACE_R * 0.48 * bodyScale;
-    ctx.beginPath();
-    ctx.ellipse(0, y, 8.5 * Math.max(bodyScale, 0.7), 8.5 * Math.max(bodyScale, 0.7), 0, 0, Math.PI * 2);
-    ctx.fillStyle = face;
-    ctx.fill();
-    ctx.restore();
+    ctx2.beginPath();
+    ctx2.ellipse(0, y, 8.5 * Math.max(bodyScale, 0.7), 8.5 * Math.max(bodyScale, 0.7), 0, 0, Math.PI * 2);
+    ctx2.fillStyle = face;
+    ctx2.fill();
+    ctx2.restore();
   }
-  function drawLoadingDots(ctx, engine2, face, theme, w) {
+  function drawLoadingDots(ctx2, engine, face, theme, w) {
     const t = performance.now() / 1e3;
     const spacing = 52;
     const items = [
@@ -1616,45 +1709,45 @@
       { x: 0, k: 1, r: 24 },
       { x: spacing, k: 0.62, r: 18 }
     ];
-    ctx.save();
+    ctx2.save();
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       const pulse = 0.88 + 0.12 * Math.sin(t * 3.6 + i * 0.95);
-      ctx.globalAlpha = w * it.k;
-      ctx.beginPath();
-      ctx.arc(it.x, 0, it.r * pulse, 0, Math.PI * 2);
-      ctx.fillStyle = face;
-      ctx.fill();
+      ctx2.globalAlpha = w * it.k;
+      ctx2.beginPath();
+      ctx2.arc(it.x, 0, it.r * pulse, 0, Math.PI * 2);
+      ctx2.fillStyle = face;
+      ctx2.fill();
     }
-    ctx.restore();
+    ctx2.restore();
   }
-  function drawSatellites(ctx, engine2, face, theme, w) {
-    ctx.save();
-    const scale = engine2.t.bodyScale.value;
-    for (let i = 0; i < engine2.satellites.length; i++) {
-      const s = engine2.satellites[i];
+  function drawSatellites(ctx2, engine, face, theme, w) {
+    ctx2.save();
+    const scale = engine.t.bodyScale.value;
+    for (let i = 0; i < engine.satellites.length; i++) {
+      const s = engine.satellites[i];
       const x = Math.cos(s.ang + i) * s.dist * Math.max(scale, 0.25);
       const y = Math.sin(s.ang * 0.85 + i) * s.dist * 0.55 * Math.max(scale, 0.25);
-      ctx.globalAlpha = w * (i === 0 ? 1 : 0.55);
-      ctx.beginPath();
-      ctx.arc(x, y - 10, s.r * (i === 0 ? 1.15 : 0.85), 0, Math.PI * 2);
-      if (i === 0 && engine2.state === "focus") {
-        ctx.fillStyle = theme.grok;
-        ctx.fill();
-        ctx.lineWidth = 3.2;
-        ctx.strokeStyle = theme.paper;
-        ctx.stroke();
+      ctx2.globalAlpha = w * (i === 0 ? 1 : 0.55);
+      ctx2.beginPath();
+      ctx2.arc(x, y - 10, s.r * (i === 0 ? 1.15 : 0.85), 0, Math.PI * 2);
+      if (i === 0 && engine.state === "focus") {
+        ctx2.fillStyle = theme.grok;
+        ctx2.fill();
+        ctx2.lineWidth = 3.2;
+        ctx2.strokeStyle = theme.paper;
+        ctx2.stroke();
       } else {
-        ctx.fillStyle = face;
-        ctx.globalAlpha = w * 0.45;
-        ctx.fill();
+        ctx2.fillStyle = face;
+        ctx2.globalAlpha = w * 0.45;
+        ctx2.fill();
       }
     }
-    ctx.restore();
+    ctx2.restore();
   }
-  function drawOrbits(ctx, engine2, w, hemisphere) {
+  function drawOrbits(ctx2, engine, w, hemisphere) {
     const samples = 72;
-    for (const o of engine2.orbits) {
+    for (const o of engine.orbits) {
       const pts = [];
       for (let i = 0; i <= samples; i++) {
         const a = i / samples * Math.PI * 2 + o.phase;
@@ -1671,11 +1764,11 @@
         const z2 = -x0 * sy + z1 * cy;
         pts.push({ x: x2, y: y1, z: z2 });
       }
-      ctx.save();
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.lineWidth = o.width;
-      ctx.globalAlpha = w * 0.92;
+      ctx2.save();
+      ctx2.lineCap = "round";
+      ctx2.lineJoin = "round";
+      ctx2.lineWidth = o.width;
+      ctx2.globalAlpha = w * 0.92;
       for (let i = 0; i < pts.length - 1; i++) {
         const a = pts[i];
         const b = pts[i + 1];
@@ -1684,16 +1777,16 @@
         if (hemisphere > 0 && midZ < -8) continue;
         const u = i / (pts.length - 1);
         const h = lerp(o.hueA, o.hueB, u);
-        ctx.beginPath();
-        ctx.strokeStyle = hueStroke(h, 0.95);
-        ctx.moveTo(a.x, a.y);
-        ctx.lineTo(b.x, b.y);
-        ctx.stroke();
+        ctx2.beginPath();
+        ctx2.strokeStyle = hueStroke(h, 0.95);
+        ctx2.moveTo(a.x, a.y);
+        ctx2.lineTo(b.x, b.y);
+        ctx2.stroke();
       }
-      ctx.restore();
+      ctx2.restore();
     }
   }
-  function drawStreaks(ctx, engine2, w, hemisphere) {
+  function drawStreaks(ctx2, engine, w, hemisphere) {
     if (hemisphere < 0) return;
     const t = performance.now() / 1e3;
     const streaks = [
@@ -1701,90 +1794,255 @@
       { y: -18, rot: -0.38, h0: 165, h1: 200, len: 120 },
       { y: -50, rot: -0.52, h0: 280, h1: 330, len: 110 }
     ];
-    ctx.save();
-    ctx.globalAlpha = w;
-    ctx.lineCap = "round";
+    ctx2.save();
+    ctx2.globalAlpha = w;
+    ctx2.lineCap = "round";
     for (const s of streaks) {
-      ctx.save();
-      ctx.rotate(s.rot + Math.sin(t) * 0.04);
-      ctx.translate(-20, s.y);
-      const g = ctx.createLinearGradient(-s.len / 2, 0, s.len / 2, 0);
+      ctx2.save();
+      ctx2.rotate(s.rot + Math.sin(t) * 0.04);
+      ctx2.translate(-20, s.y);
+      const g = ctx2.createLinearGradient(-s.len / 2, 0, s.len / 2, 0);
       g.addColorStop(0, hueStroke(s.h0, 0));
       g.addColorStop(0.25, hueStroke(s.h0, 0.95));
       g.addColorStop(0.7, hueStroke(s.h1, 0.95));
       g.addColorStop(1, hueStroke(s.h1, 0));
-      ctx.strokeStyle = g;
-      ctx.lineWidth = 6.5;
-      ctx.beginPath();
-      ctx.moveTo(-s.len / 2, 0);
-      ctx.quadraticCurveTo(0, -18, s.len / 2, 8);
-      ctx.stroke();
-      ctx.restore();
+      ctx2.strokeStyle = g;
+      ctx2.lineWidth = 6.5;
+      ctx2.beginPath();
+      ctx2.moveTo(-s.len / 2, 0);
+      ctx2.quadraticCurveTo(0, -18, s.len / 2, 8);
+      ctx2.stroke();
+      ctx2.restore();
     }
-    ctx.restore();
+    ctx2.restore();
   }
-  function drawTrail(ctx, engine2) {
-    const tr = engine2.trail;
+  function drawTrail(ctx2, engine) {
+    const tr = engine.trail;
     if (tr.length < 2) return;
-    ctx.save();
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
+    ctx2.save();
+    ctx2.lineCap = "round";
+    ctx2.lineJoin = "round";
     for (let i = 1; i < tr.length; i++) {
       const a = tr[i - 1];
       const b = tr[i];
       const u = i / tr.length;
-      ctx.strokeStyle = hueStroke(b.hue, u * 0.85);
-      ctx.lineWidth = lerp(2, 10, u);
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
+      ctx2.strokeStyle = hueStroke(b.hue, u * 0.85);
+      ctx2.lineWidth = lerp(2, 10, u);
+      ctx2.beginPath();
+      ctx2.moveTo(a.x, a.y);
+      ctx2.lineTo(b.x, b.y);
+      ctx2.stroke();
     }
-    ctx.restore();
+    ctx2.restore();
   }
-  function drawSparks(ctx, engine2) {
-    for (const s of engine2.sparks) {
+  function drawSparks(ctx2, engine) {
+    for (const s of engine.sparks) {
       const u = 1 - s.life / s.max;
-      ctx.save();
-      ctx.translate(s.x, s.y);
-      ctx.rotate(s.ang);
-      ctx.strokeStyle = hueStroke(s.hue, u);
-      ctx.lineWidth = 2.4;
-      ctx.lineCap = "round";
-      ctx.beginPath();
-      ctx.moveTo(-s.len * u, 0);
-      ctx.lineTo(s.len * u, 0);
-      ctx.stroke();
-      ctx.restore();
+      ctx2.save();
+      ctx2.translate(s.x, s.y);
+      ctx2.rotate(s.ang);
+      ctx2.strokeStyle = hueStroke(s.hue, u);
+      ctx2.lineWidth = 2.4;
+      ctx2.lineCap = "round";
+      ctx2.beginPath();
+      ctx2.moveTo(-s.len * u, 0);
+      ctx2.lineTo(s.len * u, 0);
+      ctx2.stroke();
+      ctx2.restore();
     }
   }
-  function drawDebug(ctx, engine2, theme) {
-    ctx.save();
-    ctx.strokeStyle = theme.grok;
-    ctx.lineWidth = 1.2;
-    ctx.globalAlpha = 0.55;
-    ctx.beginPath();
-    ctx.arc(0, 0, FACE_R, 0, Math.PI * 2);
-    ctx.stroke();
-    const L = engine2.projectedEye("left");
-    const R = engine2.projectedEye("right");
+  function drawDebug(ctx2, engine, theme) {
+    ctx2.save();
+    ctx2.strokeStyle = theme.grok;
+    ctx2.lineWidth = 1.2;
+    ctx2.globalAlpha = 0.55;
+    ctx2.beginPath();
+    ctx2.arc(0, 0, FACE_R, 0, Math.PI * 2);
+    ctx2.stroke();
+    const L = engine.projectedEye("left");
+    const R = engine.projectedEye("right");
     for (const eye of [L, R]) {
-      ctx.beginPath();
-      ctx.arc(eye.eye.x, eye.eye.y, 3.2, 0, Math.PI * 2);
-      ctx.fillStyle = theme.grok;
-      ctx.globalAlpha = 0.9;
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(eye.eye.x - 8, eye.eye.y);
-      ctx.lineTo(eye.eye.x + 8, eye.eye.y);
-      ctx.moveTo(eye.eye.x, eye.eye.y - 8);
-      ctx.lineTo(eye.eye.x, eye.eye.y + 8);
-      ctx.stroke();
+      ctx2.beginPath();
+      ctx2.arc(eye.eye.x, eye.eye.y, 3.2, 0, Math.PI * 2);
+      ctx2.fillStyle = theme.grok;
+      ctx2.globalAlpha = 0.9;
+      ctx2.fill();
+      ctx2.beginPath();
+      ctx2.moveTo(eye.eye.x - 8, eye.eye.y);
+      ctx2.lineTo(eye.eye.x + 8, eye.eye.y);
+      ctx2.moveTo(eye.eye.x, eye.eye.y - 8);
+      ctx2.lineTo(eye.eye.x, eye.eye.y + 8);
+      ctx2.stroke();
     }
-    ctx.restore();
+    ctx2.restore();
   }
 
-  // mac/companion.ts
+  // src/lib/grokbot/sfx.ts
+  var ctx = null;
+  function audio() {
+    if (typeof window === "undefined") return null;
+    if (!ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      ctx = new AC();
+    }
+    if (ctx.state === "suspended") void ctx.resume();
+    return ctx;
+  }
+  function beep(ac, freq, dur, gain, type, slide = 0) {
+    const t = ac.currentTime;
+    const o = ac.createOscillator();
+    const g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, freq + slide), t + dur);
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(8e-4, t + dur);
+    o.connect(g);
+    g.connect(ac.destination);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  }
+  function playSfx(name) {
+    const ac = audio();
+    if (!ac) return;
+    if (name === "blink") beep(ac, 880, 0.045, 0.035, "sine", 40);
+    else if (name === "land") {
+      beep(ac, 140, 0.09, 0.055, "triangle", -50);
+      beep(ac, 70, 0.12, 0.03, "sine", -20);
+    } else {
+      beep(ac, 520, 0.07, 0.04, "sine", 180);
+    }
+  }
+
+  // src/lib/grokbot/sizes.ts
+  var BOT_SIZES = {
+    menubar: { box: 22, faceScale: 0.46, label: "Menu bar" },
+    pet: { box: 200, faceScale: 0.3, label: "Desktop pet" },
+    companion: { box: 440, faceScale: 0.24, label: "Companion" },
+    hero: { box: 720, faceScale: 0.22, label: "Hero" }
+  };
+
+  // src/lib/grokbot/registry.ts
+  var stack = [];
+  function registerEngine(engine) {
+    if (engine) stack.push(engine);
+    else stack.pop();
+  }
+
+  // src/lib/grokbot/pet-shell.ts
+  var HOLD_MS = 220;
+  var TAP_MS = 280;
+  var DBL_MS = 340;
+  var COLOR_KEY = "grok-face-color";
+  var POS_KEY = "grok-companion-pos";
+  var STAGE = { w: 580, h: 600 };
+  var BALL_IN_STAGE = {
+    bottom: { x: 290, y: 220 },
+    top: { x: 290, y: 380 },
+    right: { x: 160, y: 300 },
+    left: { x: 420, y: 300 }
+  };
+  function pickDockSide(bx, by, area, edge = 110) {
+    const l = bx - area.x;
+    const r = area.x + area.w - bx;
+    const t = by - area.y;
+    const b = area.y + area.h - by;
+    if (b < edge && b <= t) return "top";
+    if (t < edge && t < b) return "bottom";
+    if (l < edge && l <= r) return "right";
+    if (r < edge && r < l) return "left";
+    return "bottom";
+  }
+  function clampPoint(x, y, area, pad = 8) {
+    return {
+      x: Math.min(area.x + area.w - pad, Math.max(area.x + pad, x)),
+      y: Math.min(area.y + area.h - pad, Math.max(area.y + pad, y))
+    };
+  }
+  function gazeFromRect(clientX, clientY, r) {
+    const nx = Math.max(-1, Math.min(1, (clientX - (r.left + r.width / 2)) / Math.max(72, r.width * 0.42)));
+    const ny = Math.max(-1, Math.min(1, (clientY - (r.top + r.height / 2)) / Math.max(72, r.height * 0.42)));
+    return { x: nx, y: ny };
+  }
+  function readFaceColor() {
+    try {
+      return localStorage.getItem(COLOR_KEY) || GROK_BLUE;
+    } catch {
+      return GROK_BLUE;
+    }
+  }
+  function writeFaceColor(hex) {
+    try {
+      localStorage.setItem(COLOR_KEY, hex);
+    } catch {
+    }
+  }
+  function createPetGesture() {
+    let press = null;
+    let tapAt = 0;
+    let tapTimer = 0;
+    let holding = false;
+    return {
+      get holding() {
+        return holding;
+      },
+      onDown(e2) {
+        press = {
+          sx: e2.screenX,
+          sy: e2.screenY,
+          cx: e2.clientX,
+          cy: e2.clientY,
+          armed: false,
+          moved: false,
+          timer: window.setTimeout(() => {
+            if (!press) return;
+            press.armed = true;
+            holding = true;
+          }, HOLD_MS)
+        };
+      },
+      onMove(e2) {
+        if (!press) return null;
+        if (!press.armed) return null;
+        const dx = e2.screenX - press.sx;
+        const dy = e2.screenY - press.sy;
+        if (Math.hypot(dx, dy) > 3) press.moved = true;
+        const out = { dx, dy, clientX: e2.clientX, clientY: e2.clientY };
+        press.sx = e2.screenX;
+        press.sy = e2.screenY;
+        return out;
+      },
+      onUp() {
+        if (press) window.clearTimeout(press.timer);
+        const p = press;
+        press = null;
+        holding = false;
+        if (!p || p.armed || p.moved) return p?.moved ? "drag" : "none";
+        const now = performance.now();
+        if (now - tapAt < DBL_MS) {
+          window.clearTimeout(tapTimer);
+          tapAt = 0;
+          return "dbl";
+        }
+        tapAt = now;
+        return "tap";
+      },
+      scheduleTap(fn) {
+        window.clearTimeout(tapTimer);
+        tapTimer = window.setTimeout(fn, TAP_MS);
+      },
+      cancelTap() {
+        window.clearTimeout(tapTimer);
+      },
+      dispose() {
+        if (press) window.clearTimeout(press.timer);
+        window.clearTimeout(tapTimer);
+        press = null;
+        holding = false;
+      }
+    };
+  }
   var THEME = {
     ink: "#161513",
     paper: "#f3f1ea",
@@ -1792,183 +2050,497 @@
     eye: "#fffdf8",
     muted: "#6e6a62"
   };
-  var COLOR_KEY = "grok-face-color";
-  var HOLD_MS = 220;
-  var pet = Boolean(window.pet?.isPet || new URLSearchParams(location.search).has("pet"));
-  if (pet) document.documentElement.classList.add("pet");
-  function setThrough(on) {
-    window.pet?.setClickThrough?.(on);
+  var ACTIONS = [
+    { id: "idle", label: "Idle", run: (e2) => e2.reset() },
+    { id: "blink", label: "Blink", run: (e2) => e2.blink() },
+    { id: "look", label: "Look", run: (e2) => e2.play("look") },
+    { id: "joy", label: "Joy", run: (e2) => e2.setExpression(5) },
+    { id: "think", label: "Think", run: (e2) => e2.play("think") },
+    { id: "wow", label: "Wow", run: (e2) => e2.play("exclaim") },
+    { id: "orbit", label: "Orbit", run: (e2) => e2.play("orbits") },
+    { id: "bounce", label: "Bounce", run: (e2) => e2.bounceOnce() },
+    { id: "tour", label: "Tour", run: (e2) => e2.setScene("demo") }
+  ];
+  var STYLE_ID = "grok-pet-style";
+  var PET_CSS = `
+.grok-stage {
+  position: relative;
+  width: ${STAGE.w}px;
+  height: ${STAGE.h}px;
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.grok-stage .face,
+.grok-stage .dock { pointer-events: auto; }
+.grok-stage .face {
+  position: absolute;
+  width: ${BOT_SIZES.companion.box}px;
+  height: ${BOT_SIZES.companion.box}px;
+  cursor: grab;
+  touch-action: none;
+}
+.grok-stage .face.hold { transform: scale(1.04); }
+.grok-stage .face:active { cursor: grabbing; }
+.grok-stage canvas.bot { display: block; width: 100%; height: 100%; }
+.grok-stage #wheel { display: block; width: 72px; height: 72px; cursor: crosshair; }
+.grok-stage .dock {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+.grok-stage.open .dock {
+  opacity: 1;
+  pointer-events: auto;
+}
+.grok-stage .presets { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.grok-stage .presets button {
+  width: 14px; height: 14px; border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.35);
+  padding: 0; cursor: pointer;
+}
+.grok-stage .bar {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: center;
+  align-items: center;
+  gap: 1px;
+  padding: 4px 6px;
+  background: rgba(22, 21, 19, 0.55);
+  border-radius: 999px;
+  backdrop-filter: blur(16px);
+  white-space: nowrap;
+}
+.grok-stage .bar button {
+  border: 0;
+  background: transparent;
+  color: #fffcf6;
+  font: 500 9px/1 "SF Pro Text", "Helvetica Neue", sans-serif;
+  padding: 6px 6px;
+  border-radius: 999px;
+  cursor: pointer;
+  flex: none;
+}
+.grok-stage .bar button:hover { background: rgba(255,255,255,0.12); }
+.grok-stage .bar button.on { background: rgba(255,255,255,0.2); }
+.grok-stage .studio {
+  border-radius: 999px;
+  background: rgba(22, 21, 19, 0.4);
+  color: rgba(255,252,246,0.85);
+  font: 500 11px/1 "SF Pro Text", "Helvetica Neue", sans-serif;
+  padding: 6px 10px;
+  text-decoration: none;
+  backdrop-filter: blur(12px);
+}
+.grok-stage .studio:hover { background: rgba(22, 21, 19, 0.6); }
+.grok-stage[data-side="bottom"] .face { left: 70px; top: 0; }
+.grok-stage[data-side="bottom"] .dock { left: 0; right: 0; top: 400px; }
+.grok-stage[data-side="top"] .face { left: 70px; bottom: 0; top: auto; }
+.grok-stage[data-side="top"] .dock { left: 0; right: 0; bottom: 400px; top: auto; }
+.grok-stage[data-side="right"] .face { left: 0; top: 80px; }
+.grok-stage[data-side="right"] .dock {
+  left: 400px; top: 50%; transform: translateY(-50%);
+  width: 168px;
+}
+.grok-stage[data-side="left"] .face { right: 0; left: auto; top: 80px; }
+.grok-stage[data-side="left"] .dock {
+  right: 400px; left: auto; top: 50%; transform: translateY(-50%);
+  width: 168px;
+}
+.grok-stage[data-side="right"] .bar,
+.grok-stage[data-side="left"] .bar {
+  flex-direction: column;
+  border-radius: 16px;
+  white-space: normal;
+  padding: 6px 8px;
+}
+.grok-stage[data-side="right"] .bar button,
+.grok-stage[data-side="left"] .bar button {
+  width: 100%;
+  text-align: center;
+  padding: 5px 8px;
+}
+`;
+  function injectStyle() {
+    if (document.getElementById(STYLE_ID)) return;
+    const el = document.createElement("style");
+    el.id = STYLE_ID;
+    el.textContent = PET_CSS;
+    document.head.appendChild(el);
   }
-  if (pet) setThrough(true);
-  var engine = new GrokBotEngine();
-  engine.setFollowPointer(true);
-  engine.setAutoIdle(true);
-  var faceHex = GROK_BLUE;
-  try {
-    faceHex = localStorage.getItem(COLOR_KEY) || GROK_BLUE;
-  } catch {
+  function ensureStage(root) {
+    let stage = root.id === "stage" || root.classList.contains("grok-stage") ? root : root.querySelector("#stage") || root.querySelector(".grok-stage");
+    if (!stage) {
+      stage = document.createElement("div");
+      stage.id = "stage";
+      root.appendChild(stage);
+    }
+    stage.classList.add("grok-stage");
+    if (!stage.dataset.side) stage.dataset.side = "bottom";
+    if (!stage.querySelector("#face")) {
+      stage.replaceChildren();
+      stage.insertAdjacentHTML(
+        "afterbegin",
+        `<div class="face" id="drag">
+        <canvas id="face" class="bot" aria-label="Grok Bot"></canvas>
+      </div>
+      <div class="dock" id="dock">
+        <canvas id="wheel" width="108" height="108" aria-label="Body color"></canvas>
+        <div class="presets" id="presets"></div>
+        <div class="bar" id="scenes"></div>
+        <div class="bar" id="actions"></div>
+        <a class="studio" id="studio" hidden>Studio</a>
+      </div>`
+      );
+    }
+    return stage;
   }
-  engine.setFaceColor(faceHex);
-  var stage = document.querySelector("#stage");
-  var canvas = document.querySelector("#face");
-  var wrap = canvas.parentElement;
-  var dock = document.querySelector("#dock");
-  var wheel = document.querySelector("#wheel");
-  var presets = document.querySelector("#presets");
-  if (window.pet?.onSide) {
-    window.pet.onSide((s) => {
+  function bootMacCompanion(opts = {}) {
+    injectStyle();
+    const pet = Boolean(window.pet?.isPet || new URLSearchParams(location.search).has("pet"));
+    if (pet) document.documentElement.classList.add("pet");
+    const host = opts.root ?? document.querySelector("#stage") ?? document.body;
+    const stage = ensureStage(host);
+    const engine = new GrokBotEngine();
+    engine.setScene(readScene());
+    registerEngine(engine);
+    let faceHex = readFaceColor();
+    engine.setFaceColor(faceHex);
+    const wrap = stage.querySelector("#drag");
+    const canvas = stage.querySelector("#face");
+    const dock = stage.querySelector("#dock");
+    const wheel = stage.querySelector("#wheel");
+    const presets = stage.querySelector("#presets");
+    const sceneBar = stage.querySelector("#scenes");
+    const actionBar = stage.querySelector("#actions");
+    const studio = stage.querySelector("#studio");
+    const gesture = createPetGesture();
+    let dockOpen = false;
+    let raf = 0;
+    let disposed = false;
+    const setThrough = (on) => window.pet?.setClickThrough?.(on);
+    if (pet) setThrough(true);
+    function paintScene() {
+      sceneBar.querySelectorAll("[data-scene]").forEach((btn) => {
+        btn.classList.toggle("on", btn.dataset.scene === engine.scene);
+      });
+    }
+    function applyScene(id) {
+      engine.setScene(id);
+      paintScene();
+    }
+    function showDock(open) {
+      dockOpen = open;
+      stage.classList.toggle("open", open);
+      if (open) {
+        setThrough(false);
+        playSfx("dock");
+      } else if (!gesture.holding) setThrough(true);
+    }
+    const offBlink = engine.on("blink", () => playSfx("blink"));
+    const offLand = engine.on("land", () => playSfx("land"));
+    const offSide = window.pet?.onSide?.((s) => {
       stage.dataset.side = s;
     });
-  }
-  function showDock(open) {
-    stage.classList.toggle("open", open);
-    if (open) setThrough(false);
-    else if (!press) setThrough(true);
-  }
-  if (pet) {
-    wrap.addEventListener("pointerenter", () => setThrough(false));
-    wrap.addEventListener("pointerleave", () => {
-      if (!press && !stage.classList.contains("open")) setThrough(true);
-    });
-    dock.addEventListener("pointerenter", () => setThrough(false));
-    dock.addEventListener("pointerleave", () => {
-      if (!press && !stage.classList.contains("open")) setThrough(true);
-    });
-  }
-  function sizeCanvas() {
-    const css = canvas.clientWidth || 360;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const px = Math.round(css * dpr);
-    if (canvas.width !== px) {
-      canvas.width = px;
-      canvas.height = px;
+    const offScene = window.pet?.onScene?.((s) => applyScene(s));
+    if (pet) {
+      wrap.addEventListener("pointerenter", onFaceEnter);
+      wrap.addEventListener("pointerleave", onFaceLeave);
+      dock.addEventListener("pointerenter", onFaceEnter);
+      dock.addEventListener("pointerleave", onFaceLeave);
     }
-  }
-  function paintWheel() {
-    const ctx = wheel.getContext("2d");
-    if (ctx) drawColorWheel(ctx, 108, hexToHsv(resolveFaceHex(faceHex)));
-  }
-  function setColor(hex) {
-    faceHex = hex;
-    engine.setFaceColor(hex);
-    paintWheel();
-    try {
-      localStorage.setItem(COLOR_KEY, hex);
-    } catch {
+    function onFaceEnter() {
+      setThrough(false);
     }
-  }
-  var tick = (now) => {
-    engine.tick(now);
-    const ctx = canvas.getContext("2d");
-    if (ctx) drawGrokBot(ctx, engine, canvas.width || 480, THEME, { faceScale: 0.24 });
-    requestAnimationFrame(tick);
-  };
-  new ResizeObserver(sizeCanvas).observe(wrap);
-  sizeCanvas();
-  paintWheel();
-  requestAnimationFrame(tick);
-  function lookAt(clientX, clientY) {
-    const r = canvas.getBoundingClientRect();
-    const nx = Math.max(-1, Math.min(1, (clientX - (r.left + r.width / 2)) / Math.max(72, r.width * 0.42)));
-    const ny = Math.max(-1, Math.min(1, (clientY - (r.top + r.height / 2)) / Math.max(72, r.height * 0.42)));
-    engine.pointerMove(nx, ny);
-  }
-  if (pet && window.pet?.onCursor) {
-    window.pet.onCursor((x, y) => engine.pointerMove(x, y));
-  } else {
-    window.addEventListener("pointermove", (e2) => lookAt(e2.clientX, e2.clientY), { passive: true });
-  }
-  window.addEventListener("keydown", (e2) => {
-    if (e2.code === "Space") {
-      e2.preventDefault();
-      engine.blink();
-    } else if (e2.key === "d" || e2.key === "D") engine.playDemo();
-    else if (e2.key === "r" || e2.key === "R") engine.reset();
-  });
-  var actions = {
-    idle: () => engine.reset(),
-    blink: () => engine.blink(),
-    look: () => engine.play("look"),
-    joy: () => engine.setExpression(5),
-    think: () => engine.play("loading"),
-    wow: () => engine.play("exclaim"),
-    orbit: () => engine.play("orbits"),
-    bounce: () => engine.play("bounce"),
-    tour: () => engine.playDemo()
-  };
-  document.querySelectorAll("[data-act]").forEach((btn) => {
-    btn.addEventListener("click", () => actions[btn.dataset.act ?? ""]?.());
-  });
-  FACE_PRESETS.forEach((p) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.title = p.name;
-    b.style.background = p.hex;
-    b.addEventListener("click", () => setColor(p.hex));
-    presets.appendChild(b);
-  });
-  var pickWheel = (e2) => {
-    const r = wheel.getBoundingClientRect();
-    const hit = hitColorWheel(
-      (e2.clientX - r.left) / r.width * 108,
-      (e2.clientY - r.top) / r.height * 108,
-      108,
-      hexToHsv(resolveFaceHex(faceHex))
-    );
-    if (hit) setColor(hsvToHex(hit.hsv.h, hit.hsv.s, hit.hsv.v));
-  };
-  wheel.addEventListener("pointerdown", (e2) => {
-    wheel.setPointerCapture(e2.pointerId);
-    pickWheel(e2);
-  });
-  wheel.addEventListener("pointermove", (e2) => {
-    if (e2.buttons) pickWheel(e2);
-  });
-  var press = null;
-  var tapAt = 0;
-  var tapTimer = 0;
-  wrap.addEventListener("pointerdown", (e2) => {
-    press = {
-      x: e2.screenX,
-      y: e2.screenY,
-      armed: false,
-      moved: false,
-      timer: window.setTimeout(() => {
-        if (!press) return;
-        press.armed = true;
-        wrap.classList.add("hold");
-        setThrough(false);
-      }, HOLD_MS)
-    };
-    wrap.setPointerCapture(e2.pointerId);
-  });
-  wrap.addEventListener("pointermove", (e2) => {
-    if (!press) return;
-    const dx = e2.screenX - press.x;
-    const dy = e2.screenY - press.y;
-    if (!press.armed) return;
-    if (Math.hypot(dx, dy) > 3) press.moved = true;
-    if (pet && window.pet) window.pet.moveBy(dx, dy);
-    press.x = e2.screenX;
-    press.y = e2.screenY;
-  });
-  wrap.addEventListener("pointerup", () => {
-    if (press) window.clearTimeout(press.timer);
-    wrap.classList.remove("hold");
-    if (press && !press.armed && !press.moved) {
-      const now = performance.now();
-      if (now - tapAt < 340) {
-        window.clearTimeout(tapTimer);
-        tapAt = 0;
-        engine.bounceOnce();
-      } else {
-        tapAt = now;
-        tapTimer = window.setTimeout(() => {
-          engine.blink();
-          showDock(!stage.classList.contains("open"));
-        }, 280);
+    function onFaceLeave() {
+      if (!gesture.holding && !dockOpen) setThrough(true);
+    }
+    function sizeCanvas() {
+      const css = canvas.clientWidth || BOT_SIZES.companion.box;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const px = Math.round(css * dpr);
+      if (canvas.width !== px) {
+        canvas.width = px;
+        canvas.height = px;
       }
     }
-    press = null;
-  });
+    function paintWheel() {
+      const ctx2 = wheel.getContext("2d");
+      if (ctx2) drawColorWheel(ctx2, 108, hexToHsv(resolveFaceHex(faceHex)));
+    }
+    function setColor(hex) {
+      faceHex = hex;
+      engine.setFaceColor(hex);
+      paintWheel();
+      writeFaceColor(hex);
+    }
+    const tick = (now) => {
+      if (disposed) return;
+      engine.tick(now);
+      const ctx2 = canvas.getContext("2d");
+      if (ctx2) {
+        drawGrokBot(ctx2, engine, canvas.width || 480, THEME, {
+          faceScale: BOT_SIZES.companion.faceScale
+        });
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    const ro = new ResizeObserver(sizeCanvas);
+    ro.observe(wrap);
+    sizeCanvas();
+    paintWheel();
+    raf = requestAnimationFrame(tick);
+    function lookAt(clientX, clientY) {
+      const g = gazeFromRect(clientX, clientY, canvas.getBoundingClientRect());
+      engine.pointerMove(g.x, g.y);
+    }
+    const onCursor = (x, y) => engine.pointerMove(x, y);
+    const onPointerGaze = (e2) => lookAt(e2.clientX, e2.clientY);
+    let offCursor;
+    if (pet && window.pet?.onCursor) {
+      offCursor = window.pet.onCursor(onCursor);
+    } else {
+      window.addEventListener("pointermove", onPointerGaze, { passive: true });
+    }
+    const onKey = (e2) => {
+      const tag = e2.target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e2.code === "Space") {
+        e2.preventDefault();
+        engine.blink();
+      } else if (e2.key === "d" || e2.key === "D") applyScene("demo");
+      else if (e2.key === "r" || e2.key === "R") engine.reset();
+      else if (e2.key === "1") applyScene("work");
+      else if (e2.key === "2") applyScene("companion");
+    };
+    window.addEventListener("keydown", onKey);
+    sceneBar.replaceChildren();
+    Object.keys(SCENES).forEach((id) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.scene = id;
+      b.textContent = SCENES[id].label;
+      b.title = SCENES[id].hint;
+      b.addEventListener("click", () => applyScene(id));
+      sceneBar.appendChild(b);
+    });
+    paintScene();
+    actionBar.replaceChildren();
+    ACTIONS.forEach((act) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.act = act.id;
+      b.textContent = act.label;
+      b.addEventListener("click", () => {
+        act.run(engine);
+        paintScene();
+      });
+      actionBar.appendChild(b);
+    });
+    presets.replaceChildren();
+    FACE_PRESETS.forEach((p) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.title = p.name;
+      b.style.background = p.hex;
+      b.addEventListener("click", () => setColor(p.hex));
+      presets.appendChild(b);
+    });
+    if (studio && opts.studioHref) {
+      studio.hidden = false;
+      studio.href = opts.studioHref;
+    }
+    const pickWheel = (e2) => {
+      const r = wheel.getBoundingClientRect();
+      const hit = hitColorWheel(
+        (e2.clientX - r.left) / r.width * 108,
+        (e2.clientY - r.top) / r.height * 108,
+        108,
+        hexToHsv(resolveFaceHex(faceHex))
+      );
+      if (hit) setColor(hsvToHex(hit.hsv.h, hit.hsv.s, hit.hsv.v));
+    };
+    const onWheelDown = (e2) => {
+      wheel.setPointerCapture(e2.pointerId);
+      pickWheel(e2);
+    };
+    const onWheelMove = (e2) => {
+      if (e2.buttons) pickWheel(e2);
+    };
+    wheel.addEventListener("pointerdown", onWheelDown);
+    wheel.addEventListener("pointermove", onWheelMove);
+    const web = !pet;
+    let pos = { x: 0, y: 0 };
+    let vel = { x: 0, y: 0 };
+    let last = { x: 0, y: 0, t: 0 };
+    let dragging = false;
+    let inertiaRaf = 0;
+    let webSide = "bottom";
+    function area() {
+      return { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight };
+    }
+    function fitScale() {
+      return Math.min(1, window.innerWidth / STAGE.w, window.innerHeight / (STAGE.h * 0.92));
+    }
+    function applyWebPos() {
+      if (!web) return;
+      const o = BALL_IN_STAGE[webSide];
+      const scale = fitScale();
+      stage.style.position = "absolute";
+      stage.style.left = "0";
+      stage.style.top = "0";
+      stage.style.transformOrigin = `${o.x}px ${o.y}px`;
+      stage.style.transform = `translate(${pos.x - o.x}px, ${pos.y - o.y}px) scale(${scale})`;
+      stage.dataset.side = webSide;
+    }
+    function placeWeb() {
+      if (!web) return;
+      webSide = pickDockSide(pos.x, pos.y, area());
+      applyWebPos();
+    }
+    function saveWebPos() {
+      if (!web) return;
+      try {
+        localStorage.setItem(POS_KEY, JSON.stringify(pos));
+      } catch {
+      }
+    }
+    if (web) {
+      let placed = false;
+      try {
+        const raw = localStorage.getItem(POS_KEY);
+        if (raw) {
+          const p = JSON.parse(raw);
+          if (Number.isFinite(p.x) && Number.isFinite(p.y)) {
+            pos = clampPoint(p.x, p.y, area());
+            placed = true;
+          }
+        }
+      } catch {
+      }
+      if (!placed) pos = clampPoint(window.innerWidth / 2, window.innerHeight / 2, area());
+      placeWeb();
+      const step = () => {
+        if (disposed) return;
+        if (!dragging && (Math.abs(vel.x) > 0.12 || Math.abs(vel.y) > 0.12)) {
+          let { x, y } = pos;
+          x += vel.x;
+          y += vel.y;
+          const next = clampPoint(x, y, area());
+          if (next.x !== x) vel.x *= -0.52;
+          if (next.y !== y) vel.y *= -0.52;
+          pos = next;
+          vel.x *= 0.9;
+          vel.y *= 0.9;
+          placeWeb();
+          if (Math.abs(vel.x) <= 0.12 && Math.abs(vel.y) <= 0.12) {
+            vel = { x: 0, y: 0 };
+            saveWebPos();
+          }
+        }
+        inertiaRaf = requestAnimationFrame(step);
+      };
+      inertiaRaf = requestAnimationFrame(step);
+    }
+    const onResize = () => {
+      if (!web) return;
+      pos = clampPoint(pos.x, pos.y, area());
+      placeWeb();
+    };
+    window.addEventListener("resize", onResize);
+    const onBg = (e2) => {
+      if (!dockOpen) return;
+      if (stage.contains(e2.target)) return;
+      showDock(false);
+    };
+    if (web) window.addEventListener("pointerdown", onBg);
+    const onDown = (e2) => {
+      vel = { x: 0, y: 0 };
+      dragging = false;
+      last = { x: e2.screenX, y: e2.screenY, t: performance.now() };
+      gesture.onDown(e2);
+      wrap.setPointerCapture(e2.pointerId);
+    };
+    const onMove = (e2) => {
+      const move = gesture.onMove(e2);
+      if (!move) return;
+      wrap.classList.add("hold");
+      const now = performance.now();
+      const dt = Math.max(8, now - last.t);
+      vel = {
+        x: (e2.screenX - last.x) / dt * 16,
+        y: (e2.screenY - last.y) / dt * 16
+      };
+      const prevX = last.x;
+      const prevY = last.y;
+      last = { x: e2.screenX, y: e2.screenY, t: now };
+      dragging = true;
+      if (pet && window.pet) {
+        window.pet.moveBy(e2.screenX - prevX, e2.screenY - prevY);
+      } else {
+        pos = clampPoint(pos.x + move.dx, pos.y + move.dy, area());
+        placeWeb();
+      }
+    };
+    const onUp = () => {
+      wrap.classList.remove("hold");
+      const kind = gesture.onUp();
+      if (kind === "dbl") {
+        gesture.cancelTap();
+        engine.bounceOnce();
+        vel = { x: 0, y: 0 };
+      } else if (kind === "tap") {
+        gesture.scheduleTap(() => {
+          engine.blink();
+          showDock(!dockOpen);
+        });
+        vel = { x: 0, y: 0 };
+      } else if (kind === "drag" && web) {
+        vel.x = Math.max(-38, Math.min(38, vel.x));
+        vel.y = Math.max(-38, Math.min(38, vel.y));
+      }
+      dragging = false;
+      saveWebPos();
+      placeWeb();
+    };
+    wrap.addEventListener("pointerdown", onDown);
+    wrap.addEventListener("pointermove", onMove);
+    wrap.addEventListener("pointerup", onUp);
+    wrap.addEventListener("pointercancel", onUp);
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(raf);
+      cancelAnimationFrame(inertiaRaf);
+      ro.disconnect();
+      offBlink();
+      offLand();
+      gesture.dispose();
+      registerEngine(null);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointermove", onPointerGaze);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("pointerdown", onBg);
+      wrap.removeEventListener("pointerdown", onDown);
+      wrap.removeEventListener("pointermove", onMove);
+      wrap.removeEventListener("pointerup", onUp);
+      wrap.removeEventListener("pointercancel", onUp);
+      wrap.removeEventListener("pointerenter", onFaceEnter);
+      wrap.removeEventListener("pointerleave", onFaceLeave);
+      dock.removeEventListener("pointerenter", onFaceEnter);
+      dock.removeEventListener("pointerleave", onFaceLeave);
+      wheel.removeEventListener("pointerdown", onWheelDown);
+      wheel.removeEventListener("pointermove", onWheelMove);
+      if (typeof offCursor === "function") offCursor();
+      if (typeof offSide === "function") offSide();
+      if (typeof offScene === "function") offScene();
+    };
+  }
+
+  // mac/companion.ts
+  bootMacCompanion();
 })();

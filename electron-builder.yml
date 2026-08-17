@@ -1,0 +1,27 @@
+appId: workshop.simon.grokbot
+productName: GrokBot
+directories:
+  output: dist-pet
+files:
+  - electron/**/*
+  - mac/**/*
+  - assets/icon.png
+  - package.json
+  - "!node_modules/**"
+  - "!mac/companion.ts"
+  - "!mac/Open GrokBot.command"
+extraMetadata:
+  main: electron/main.mjs
+  dependencies: {}
+mac:
+  category: public.app-category.entertainment
+  icon: assets/icon.png
+  target:
+    - dmg
+    - zip
+  identity: null
+  hardenedRuntime: false
+  artifactName: ${productName}-${version}-${arch}.${ext}
+linux:
+  target: dir
+  artifactName: ${productName}-${version}-${arch}.${ext}

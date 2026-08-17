@@ -1,5 +1,7 @@
 import { create } from "zustand";
+import { GROK_BLUE } from "./color";
 import type { FaceColor, ShapeId, StateId } from "./types";
+import type { SceneId } from "./scenes";
 
 type AtelierState = {
   expression: number;
@@ -16,6 +18,7 @@ type AtelierState = {
   followPointer: boolean;
   autoIdle: boolean;
   faceColor: FaceColor;
+  scene: SceneId;
   demoPlaying: boolean;
   demoName: string;
   liveGazeX: number;
@@ -42,7 +45,8 @@ export const useAtelier = create<AtelierState>((set) => ({
   debug: false,
   followPointer: true,
   autoIdle: true,
-  faceColor: "blue",
+  faceColor: GROK_BLUE,
+  scene: "companion",
   demoPlaying: false,
   demoName: "idle",
   liveGazeX: 0,

@@ -3,6 +3,8 @@ import { GrokBotEngine } from "@/lib/grokbot/engine";
 import { drawGrokBot, type ThemeColors } from "@/lib/grokbot/renderer";
 import { useAtelier } from "@/lib/grokbot/store";
 import { registerEngine } from "@/lib/grokbot/registry";
+import { playSfx } from "@/lib/grokbot/sfx";
+import { BOT_SIZES } from "@/lib/grokbot/sizes";
 import { cn } from "@/lib/utils";
 
 function readTheme(): ThemeColors {
@@ -59,6 +61,9 @@ export function GrokBotCanvas({
     engine.setEmphasis(store.emphasis);
     engine.setDebug(store.debug);
     engine.setRotation((store.yawDeg * Math.PI) / 180, 0);
+    if (followGlobal) engine.setScene(store.scene);
+    const offBlink = engine.on("blink", () => playSfx("blink"));
+    const offLand = engine.on("land", () => playSfx("land"));
 
     const unsub = useAtelier.subscribe((s, prev) => {
       if (s.expression !== prev.expression) engine.setExpression(s.expression);
@@ -72,6 +77,7 @@ export function GrokBotCanvas({
       if (s.flipX !== prev.flipX) engine.setFlipX(s.flipX);
       if (s.emphasis !== prev.emphasis) engine.setEmphasis(s.emphasis);
       if (s.debug !== prev.debug) engine.setDebug(s.debug);
+      if (s.scene !== prev.scene && followGlobal) engine.setScene(s.scene);
       if (s.yawDeg !== prev.yawDeg)
         engine.setRotation((s.yawDeg * Math.PI) / 180, engine.tgt.pitch);
       if (s.gazeX !== prev.gazeX || s.gazeY !== prev.gazeY) {
@@ -87,7 +93,7 @@ export function GrokBotCanvas({
       const theme = themeRef.current ?? readTheme();
       if (ctx) {
         drawGrokBot(ctx, engine, canvas.width || 480, theme, {
-          faceScale: faceScaleRef.current,
+          faceScale: faceScaleRef.current ?? BOT_SIZES.companion.faceScale,
         });
       }
       if (now - lastPush > 80) {
@@ -121,7 +127,14 @@ export function GrokBotCanvas({
         e.preventDefault();
         engine.blink();
       } else if (e.key === "d" || e.key === "D") {
-        engine.playDemo();
+        engine.setScene("demo");
+        useAtelier.getState().set({ scene: "demo" });
+      } else if (e.key === "1") {
+        engine.setScene("work");
+        useAtelier.getState().set({ scene: "work" });
+      } else if (e.key === "2") {
+        engine.setScene("companion");
+        useAtelier.getState().set({ scene: "companion" });
       } else if (e.key === "r" || e.key === "R") {
         engine.reset();
         useAtelier.getState().set({
@@ -142,11 +155,13 @@ export function GrokBotCanvas({
       cancelAnimationFrame(raf);
       ro.disconnect();
       unsub();
+      offBlink();
+      offLand();
       window.removeEventListener("keydown", onKey);
       registerEngine(null);
       engineRef.current = null;
     };
-  }, []);
+  }, [followGlobal]);
 
   useEffect(() => {
     if (!followGlobal) return;
@@ -187,10 +202,6 @@ export function GrokBotCanvas({
         ref={canvasRef}
         className="block size-full"
         aria-label="Grok Bot icon"
-        onDoubleClick={(e) => {
-          e.preventDefault();
-          engineRef.current?.bounceOnce();
-        }}
       />
     </div>
   );

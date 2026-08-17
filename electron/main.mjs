@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, screen } from "electron";
+import { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
@@ -6,9 +6,9 @@ import fs from "node:fs";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const POS_FILE = path.join(app.getPath("userData"), "pet-pos.json");
 
+// Keep in sync with src/lib/grokbot/pet-shell.ts STAGE / BALL_IN_STAGE
 const STAGE_W = 580;
 const STAGE_H = 600;
-/** Ball center inside the window for each dock side. */
 const BALL = {
   bottom: { x: 290, y: 220 },
   top: { x: 290, y: 380 },
@@ -17,27 +17,37 @@ const BALL = {
 };
 
 let win = null;
+let tray = null;
 let side = "bottom";
+let cursorTimer = null;
+let visible = true;
 
 function loadPos() {
   try {
     const raw = JSON.parse(fs.readFileSync(POS_FILE, "utf8"));
-    if (Number.isFinite(raw.x) && Number.isFinite(raw.y)) return raw;
+    if (!Number.isFinite(raw.x) || !Number.isFinite(raw.y)) return null;
+    if (raw.v === 2) return { x: raw.x, y: raw.y };
+    return { x: raw.x + BALL.bottom.x, y: raw.y + BALL.bottom.y };
   } catch {
-    /* first run */
+    return null;
   }
-  return null;
 }
 
 function savePos() {
   if (!win) return;
-  const [x, y] = win.getPosition();
-  const b = BALL[side];
+  const b = ballScreen();
   try {
-    fs.writeFileSync(POS_FILE, JSON.stringify({ x: x + b.x, y: y + b.y }));
+    fs.writeFileSync(POS_FILE, JSON.stringify({ v: 2, x: b.x, y: b.y }));
   } catch {
     /* ignore */
   }
+}
+
+function onADisplay(x, y) {
+  return screen.getAllDisplays().some((d) => {
+    const a = d.bounds;
+    return x >= a.x && y >= a.y && x <= a.x + a.width && y <= a.y + a.height;
+  });
 }
 
 function workAreaAt(x, y) {
@@ -49,7 +59,7 @@ function pickSide(bx, by, a) {
   const r = a.x + a.width - bx;
   const t = by - a.y;
   const btm = a.y + a.height - by;
-  const edge = 130;
+  const edge = 110;
   if (btm < edge && btm <= t) return "top";
   if (t < edge && t < btm) return "bottom";
   if (l < edge && l <= r) return "right";
@@ -60,25 +70,8 @@ function pickSide(bx, by, a) {
 function placeWindow(bx, by, nextSide) {
   if (!win) return;
   const o = BALL[nextSide];
-  const a = workAreaAt(bx, by);
-  let wx = Math.round(bx - o.x);
-  let wy = Math.round(by - o.y);
-  const dockPad = 12;
-  if (nextSide === "bottom") {
-    wy = Math.min(wy, a.y + a.height - STAGE_H + dockPad);
-    wy = Math.max(wy, a.y - 80);
-  } else if (nextSide === "top") {
-    wy = Math.max(wy, a.y - dockPad);
-    wy = Math.min(wy, a.y + a.height - STAGE_H + 80);
-  } else if (nextSide === "right") {
-    wx = Math.max(wx, a.x - 40);
-    wx = Math.min(wx, a.x + a.width - STAGE_W + dockPad);
-  } else {
-    wx = Math.min(wx, a.x + a.width - STAGE_W + 40);
-    wx = Math.max(wx, a.x - dockPad);
-  }
-  wx = Math.min(a.x + a.width - 160, Math.max(a.x + 160 - STAGE_W, wx));
-  wy = Math.min(a.y + a.height - 160, Math.max(a.y + 160 - STAGE_H, wy));
+  const wx = Math.round(bx - o.x);
+  const wy = Math.round(by - o.y);
   side = nextSide;
   win.setBounds({ x: wx, y: wy, width: STAGE_W, height: STAGE_H });
   win.webContents.send("pet-side", side);
@@ -90,21 +83,77 @@ function ballScreen() {
   return { x: wx + o.x, y: wy + o.y };
 }
 
-function syncLayout() {
-  if (!win || win.isDestroyed()) return;
-  const b = ballScreen();
-  const next = pickSide(b.x, b.y, workAreaAt(b.x, b.y));
-  if (next !== side) placeWindow(b.x, b.y, next);
+function iconImage() {
+  const file = path.join(here, "../assets/icon.png");
+  if (fs.existsSync(file)) return nativeImage.createFromPath(file);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><circle cx="16" cy="16" r="14" fill="#1b56f3"/><circle cx="12" cy="14" r="2.2" fill="#fffdf8"/><circle cx="20" cy="14" r="2.2" fill="#fffdf8"/></svg>`;
+  return nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`);
+}
+
+function applyTrayMenu() {
+  const login = app.getLoginItemSettings().openAtLogin;
+  const menu = Menu.buildFromTemplate([
+    {
+      label: visible ? "Hide GrokBot" : "Show GrokBot",
+      click: () => toggleVisible(),
+    },
+    { type: "separator" },
+    { label: "Work", click: () => win?.webContents.send("pet-scene", "work") },
+    { label: "Play", click: () => win?.webContents.send("pet-scene", "companion") },
+    { label: "Demo", click: () => win?.webContents.send("pet-scene", "demo") },
+    { type: "separator" },
+    {
+      label: "Open at Login",
+      type: "checkbox",
+      checked: login,
+      click: (item) => {
+        app.setLoginItemSettings({ openAtLogin: item.checked, openAsHidden: true });
+      },
+    },
+    { type: "separator" },
+    {
+      label: "Quit GrokBot",
+      accelerator: "Command+Q",
+      click: () => {
+        cleanup();
+        app.quit();
+      },
+    },
+  ]);
+  if (!tray) {
+    const img = iconImage();
+    img.setTemplateImage(false);
+    tray = new Tray(img.resize({ width: 18, height: 18 }));
+    tray.setToolTip("GrokBot");
+    tray.on("click", () => toggleVisible());
+  }
+  tray.setContextMenu(menu);
+}
+
+function toggleVisible() {
+  if (!win) return;
+  visible = !visible;
+  if (visible) win.show();
+  else win.hide();
+  applyTrayMenu();
+}
+
+function cleanup() {
+  if (cursorTimer) {
+    clearInterval(cursorTimer);
+    cursorTimer = null;
+  }
+  tray?.destroy();
+  tray = null;
 }
 
 function create() {
   const cursor = screen.getCursorScreenPoint();
-  const saved = loadPos();
-  const start = {
-    x: saved?.x ?? cursor.x,
-    y: saved?.y ?? cursor.y,
-  };
+  let start = loadPos();
+  if (!start || !onADisplay(start.x, start.y)) start = { x: cursor.x, y: cursor.y };
   const a = workAreaAt(start.x, start.y);
+  start.x = Math.min(a.x + a.width - 8, Math.max(a.x + 8, start.x));
+  start.y = Math.min(a.y + a.height - 8, Math.max(a.y + 8, start.y));
   side = pickSide(start.x, start.y, a);
   const o = BALL[side];
   win = new BrowserWindow({
@@ -112,6 +161,7 @@ function create() {
     height: STAGE_H,
     x: Math.round(start.x - o.x),
     y: Math.round(start.y - o.y),
+    show: !app.getLoginItemSettings().wasOpenedAsHidden,
     frame: false,
     transparent: true,
     hasShadow: false,
@@ -134,6 +184,7 @@ function create() {
       backgroundThrottling: false,
     },
   });
+  if (app.getLoginItemSettings().wasOpenedAsHidden) visible = false;
   win.setAlwaysOnTop(true, "screen-saver");
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   if (process.platform === "darwin") {
@@ -147,13 +198,10 @@ function create() {
     const b = ballScreen();
     placeWindow(b.x, b.y, side);
   });
-  win.on("moved", () => {
-    savePos();
-    syncLayout();
-  });
+  win.on("moved", savePos);
   win.on("close", savePos);
 
-  setInterval(() => {
+  cursorTimer = setInterval(() => {
     if (!win || win.isDestroyed()) return;
     const p = screen.getCursorScreenPoint();
     const b = ballScreen();
@@ -161,6 +209,21 @@ function create() {
     const ny = Math.max(-1, Math.min(1, (p.y - b.y) / 200));
     win.webContents.send("pet-cursor", nx, ny);
   }, 32);
+
+  applyTrayMenu();
+  const appMenu = Menu.buildFromTemplate([
+    {
+      label: "GrokBot",
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        { label: "Hide GrokBot", click: () => toggleVisible() },
+        { type: "separator" },
+        { role: "quit", label: "Quit GrokBot" },
+      ],
+    },
+  ]);
+  Menu.setApplicationMenu(appMenu);
 }
 
 ipcMain.on("pet-move-by", (event, dx, dy) => {
@@ -171,8 +234,7 @@ ipcMain.on("pet-move-by", (event, dx, dy) => {
   const a = workAreaAt(next.x, next.y);
   next.x = Math.min(a.x + a.width - 8, Math.max(a.x + 8, next.x));
   next.y = Math.min(a.y + a.height - 8, Math.max(a.y + 8, next.y));
-  const nextSide = pickSide(next.x, next.y, a);
-  placeWindow(next.x, next.y, nextSide);
+  placeWindow(next.x, next.y, pickSide(next.x, next.y, a));
 });
 
 ipcMain.on("pet-click-through", (event, ignore) => {
@@ -181,14 +243,34 @@ ipcMain.on("pet-click-through", (event, ignore) => {
   w.setIgnoreMouseEvents(Boolean(ignore), { forward: true });
 });
 
-ipcMain.on("pet-dock", () => {});
+ipcMain.on("pet-set-scene", (_e, scene) => {
+  win?.webContents.send("pet-scene", scene);
+});
 
 if (process.platform !== "darwin") {
   app.commandLine.appendSwitch("enable-transparent-visuals");
 }
 
-app.whenReady().then(create);
-app.on("window-all-closed", () => app.quit());
+const locked = app.requestSingleInstanceLock();
+if (!locked) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (!win) create();
+    else {
+      if (!visible) toggleVisible();
+      else win.show();
+    }
+  });
+  app.whenReady().then(create);
+}
+
+app.on("window-all-closed", () => {
+  cleanup();
+  app.quit();
+});
+app.on("before-quit", cleanup);
 app.on("activate", () => {
   if (!win) create();
+  else if (!visible) toggleVisible();
 });
