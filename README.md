@@ -1,9 +1,9 @@
 # GrokBot
 
-A living Grok Bot icon drawn entirely in code. Drag it on your Mac desktop.
-Pick any body color from the hue ring.
+A living Grok Bot icon drawn entirely in code. It sits on your Mac desktop
+with a **fully transparent** window — only the face is there.
 
-## 在 Mac 上当桌宠
+## 在 Mac 上当透明桌宠
 
 1. 安装 [Node.js](https://nodejs.org/)（一次就好）
 2. 下载仓库后在终端里：
@@ -17,9 +17,11 @@ npm run pet
 
 或双击 `mac/Open GrokBot.command`（装过依赖之后）。
 
-- 抓住脸，拖到桌面任意位置
-- 窗口无边框、透明、始终置顶
+- 窗口无边框、背景全透明，直接叠在桌面上
+- 空白处点得穿，不会挡住桌面图标
+- 抓住脸拖到任意位置，始终置顶
 - 悬停出色环，转一圈换身体颜色
+- 点一下眨眼 · 连点两下蹦一轮
 - 空格眨眼 · `D` 演示 · `R` 复位
 
 没有 Node 时，双击 `mac/index.html` 也能在浏览器里玩（只能在窗口内拖）。
@@ -32,7 +34,7 @@ npm run pet
 
 | Path | Role |
 | --- | --- |
-| `electron/` | 无边框置顶桌宠 |
+| `electron/` | 透明无边框置顶桌宠 |
 | `mac/` | 独立窗口 + 打包后的引擎 |
 | `src/lib/grokbot/` | 引擎、表情、色环、渲染 |
 | `src/components/desktop/` | 网页里的伴侣预览 |

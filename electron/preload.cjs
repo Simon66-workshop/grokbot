@@ -5,4 +5,7 @@ contextBridge.exposeInMainWorld("pet", {
   moveBy(dx, dy) {
     ipcRenderer.send("pet-move-by", dx, dy);
   },
+  setClickThrough(on) {
+    ipcRenderer.send("pet-click-through", on);
+  },
 });

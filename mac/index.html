@@ -5,45 +5,40 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>GrokBot</title>
     <style>
-      :root {
-        --paper: #f3f1ea;
-        --ink: #161513;
-        --muted: #6e6a62;
-        --line: rgba(22, 21, 19, 0.1);
-        --grok: #1b56f3;
-      }
       * { box-sizing: border-box; }
       html, body {
         margin: 0;
         height: 100%;
-        background: var(--paper);
-        color: var(--ink);
-        font-family: "SF Pro Text", "Helvetica Neue", sans-serif;
+        background: transparent;
         overflow: hidden;
+        font-family: "SF Pro Text", "Helvetica Neue", sans-serif;
+        -webkit-user-select: none;
+        user-select: none;
       }
-      html.pet, html.pet body { background: transparent; }
       .stage {
+        position: relative;
         min-height: 100%;
         display: flex;
-        flex-direction: column;
         align-items: center;
-        justify-content: flex-start;
-        padding: 8px 12px 20px;
+        justify-content: center;
       }
       .face {
-        width: min(72vw, 300px);
+        width: min(92vw, 280px);
         aspect-ratio: 1;
         cursor: grab;
       }
       .face:active { cursor: grabbing; }
       canvas.bot { display: block; width: 100%; height: 100%; }
-      #wheel { display: block; width: 108px; height: 108px; cursor: crosshair; }
+      #wheel { display: block; width: 96px; height: 96px; cursor: crosshair; }
       .dock {
+        position: absolute;
+        left: 50%;
+        bottom: 10px;
+        transform: translateX(-50%);
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 10px;
-        margin-top: 4px;
+        gap: 8px;
         opacity: 0;
         pointer-events: none;
         transition: opacity 160ms ease;
@@ -54,16 +49,17 @@
       }
       .presets { display: flex; gap: 6px; }
       .presets button {
-        width: 16px; height: 16px; border-radius: 999px;
-        border: 1px solid rgba(22,21,19,0.18);
+        width: 14px; height: 14px; border-radius: 999px;
+        border: 1px solid rgba(255,255,255,0.35);
         padding: 0; cursor: pointer;
       }
       .bar {
         display: flex;
         flex-wrap: wrap;
         justify-content: center;
-        gap: 4px;
-        padding: 5px;
+        gap: 3px;
+        padding: 4px;
+        max-width: 260px;
         background: rgba(22, 21, 19, 0.55);
         border-radius: 999px;
         backdrop-filter: blur(16px);
@@ -72,8 +68,8 @@
         border: 0;
         background: transparent;
         color: #fffcf6;
-        font: 500 11px/1 "SF Pro Text", sans-serif;
-        padding: 7px 9px;
+        font: 500 10px/1 "SF Pro Text", sans-serif;
+        padding: 6px 7px;
         border-radius: 999px;
         cursor: pointer;
       }

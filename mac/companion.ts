@@ -22,6 +22,11 @@ const COLOR_KEY = "grok-face-color";
 const pet = Boolean(window.pet?.isPet || new URLSearchParams(location.search).has("pet"));
 if (pet) document.documentElement.classList.add("pet");
 
+function setThrough(on: boolean) {
+  window.pet?.setClickThrough?.(on);
+}
+if (pet) setThrough(true);
+
 const engine = new GrokBotEngine();
 engine.setFollowPointer(true);
 engine.setAutoIdle(true);
@@ -36,8 +41,20 @@ engine.setFaceColor(faceHex);
 
 const canvas = document.querySelector<HTMLCanvasElement>("#face")!;
 const wrap = canvas.parentElement!;
+const dock = document.querySelector<HTMLDivElement>("#dock")!;
 const wheel = document.querySelector<HTMLCanvasElement>("#wheel")!;
 const presets = document.querySelector<HTMLDivElement>("#presets")!;
+
+if (pet) {
+  const hold = () => setThrough(false);
+  const release = () => {
+    if (!dragging) setThrough(true);
+  };
+  wrap.addEventListener("pointerenter", hold);
+  wrap.addEventListener("pointerleave", release);
+  dock.addEventListener("pointerenter", hold);
+  dock.addEventListener("pointerleave", release);
+}
 
 function sizeCanvas() {
   const css = canvas.clientWidth || 360;
@@ -167,4 +184,5 @@ wrap.addEventListener("pointerup", () => {
     }
   }
   dragging = null;
+  if (pet) setThrough(true);
 });

@@ -1787,6 +1787,10 @@
   var COLOR_KEY = "grok-face-color";
   var pet = Boolean(window.pet?.isPet || new URLSearchParams(location.search).has("pet"));
   if (pet) document.documentElement.classList.add("pet");
+  function setThrough(on) {
+    window.pet?.setClickThrough?.(on);
+  }
+  if (pet) setThrough(true);
   var engine = new GrokBotEngine();
   engine.setFollowPointer(true);
   engine.setAutoIdle(true);
@@ -1798,8 +1802,19 @@
   engine.setFaceColor(faceHex);
   var canvas = document.querySelector("#face");
   var wrap = canvas.parentElement;
+  var dock = document.querySelector("#dock");
   var wheel = document.querySelector("#wheel");
   var presets = document.querySelector("#presets");
+  if (pet) {
+    const hold = () => setThrough(false);
+    const release = () => {
+      if (!dragging) setThrough(true);
+    };
+    wrap.addEventListener("pointerenter", hold);
+    wrap.addEventListener("pointerleave", release);
+    dock.addEventListener("pointerenter", hold);
+    dock.addEventListener("pointerleave", release);
+  }
   function sizeCanvas() {
     const css = canvas.clientWidth || 360;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -1916,5 +1931,6 @@
       }
     }
     dragging = null;
+    if (pet) setThrough(true);
   });
 })();

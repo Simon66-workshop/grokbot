@@ -254,14 +254,21 @@ export function Desktop() {
 
   return (
     <div className="relative h-dvh w-full overflow-hidden bg-transparent">
+      {!isPet() && <MacDesktop />}
       <div
         ref={widget}
         className={cn(
           "z-20 w-[min(420px,86vw)] will-change-transform",
           isPet() ? "relative mx-auto" : "absolute top-0 left-0",
         )}
-        onPointerEnter={() => setOpen(true)}
-        onPointerLeave={() => setOpen(false)}
+        onPointerEnter={() => {
+          setOpen(true);
+          window.pet?.setClickThrough?.(false);
+        }}
+        onPointerLeave={() => {
+          setOpen(false);
+          window.pet?.setClickThrough?.(true);
+        }}
       >
         <div
           className="cursor-grab touch-none active:cursor-grabbing"
@@ -299,6 +306,34 @@ export function Desktop() {
               Studio
             </Link>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MacDesktop() {
+  return (
+    <div className="pointer-events-none absolute inset-0" aria-hidden>
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(120% 90% at 50% 108%, #1d3a28 0%, transparent 52%), linear-gradient(180deg, #7eb6ea 0%, #b9c4f0 38%, #e8b4c8 72%, #c9a07a 100%)",
+        }}
+      />
+      <div className="absolute inset-x-0 top-0 flex h-7 items-center justify-between px-3 text-[12px] text-ink/80">
+        <div className="flex items-center gap-3 font-medium">
+          <span className="text-[13px]"></span>
+          <span>Finder</span>
+          <span className="opacity-70">File</span>
+          <span className="opacity-70">Edit</span>
+          <span className="opacity-70">View</span>
+          <span className="opacity-70">Go</span>
+        </div>
+        <div className="flex items-center gap-3 opacity-70">
+          <span>Mon 17</span>
+          <span>7:57 AM</span>
         </div>
       </div>
     </div>
