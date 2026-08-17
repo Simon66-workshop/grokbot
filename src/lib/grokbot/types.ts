@@ -22,7 +22,7 @@ export type ShapeId =
 
 export type FaceMode = "face" | "loading" | "exclaim" | "satellites";
 
-export type FaceColor = "ink" | "blue";
+export type FaceColor = string;
 
 export type StateId =
   | "idle"

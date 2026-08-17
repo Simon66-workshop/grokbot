@@ -1170,6 +1170,156 @@
     }
   };
 
+  // src/lib/grokbot/color.ts
+  var GROK_BLUE = "#1b56f3";
+  var INK = "#161513";
+  var FACE_PRESETS = [
+    { name: "Grok", hex: GROK_BLUE },
+    { name: "Ink", hex: INK },
+    { name: "Coral", hex: "#e85d4c" },
+    { name: "Gold", hex: "#e2a116" },
+    { name: "Mint", hex: "#2bb673" },
+    { name: "Violet", hex: "#7b5cff" },
+    { name: "Sky", hex: "#3db7e8" },
+    { name: "Rose", hex: "#e85a9b" }
+  ];
+  function resolveFaceHex(c) {
+    if (!c || c === "blue") return GROK_BLUE;
+    if (c === "ink") return INK;
+    return c;
+  }
+  function hexToRgb(hex) {
+    const h = resolveFaceHex(hex).replace("#", "");
+    const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
+    return { r: n >> 16 & 255, g: n >> 8 & 255, b: n & 255 };
+  }
+  function rgbToHex(r, g, b) {
+    const c = (n) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, "0");
+    return `#${c(r)}${c(g)}${c(b)}`;
+  }
+  function rgbToHsv(r, g, b) {
+    r /= 255;
+    g /= 255;
+    b /= 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const d = max - min;
+    let h = 0;
+    if (d !== 0) {
+      if (max === r) h = (g - b) / d % 6;
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h *= 60;
+      if (h < 0) h += 360;
+    }
+    return { h, s: max === 0 ? 0 : d / max, v: max };
+  }
+  function hsvToRgb(h, s, v) {
+    const c = v * s;
+    const x = c * (1 - Math.abs(h / 60 % 2 - 1));
+    const m = v - c;
+    let rp = 0;
+    let gp = 0;
+    let bp = 0;
+    if (h < 60) [rp, gp, bp] = [c, x, 0];
+    else if (h < 120) [rp, gp, bp] = [x, c, 0];
+    else if (h < 180) [rp, gp, bp] = [0, c, x];
+    else if (h < 240) [rp, gp, bp] = [0, x, c];
+    else if (h < 300) [rp, gp, bp] = [x, 0, c];
+    else [rp, gp, bp] = [c, 0, x];
+    return { r: (rp + m) * 255, g: (gp + m) * 255, b: (bp + m) * 255 };
+  }
+  function hsvToHex(h, s, v) {
+    const { r, g, b } = hsvToRgb(h, s, v);
+    return rgbToHex(r, g, b);
+  }
+  function hexToHsv(hex) {
+    const { r, g, b } = hexToRgb(hex);
+    return rgbToHsv(r, g, b);
+  }
+  function luminance(hex) {
+    const { r, g, b } = hexToRgb(hex);
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  }
+  function hitColorWheel(x, y, size, current) {
+    const cx = size / 2;
+    const cy = size / 2;
+    const dx = x - cx;
+    const dy = y - cy;
+    const r = Math.hypot(dx, dy);
+    const outer = size / 2 - 1;
+    const ringIn = outer - 16;
+    const disc = ringIn - 7;
+    const ang = Math.atan2(dy, dx) * 180 / Math.PI;
+    const hue = (ang + 360 + 90) % 360;
+    if (r <= outer && r >= ringIn - 2) {
+      return { zone: "ring", hsv: { h: hue, s: Math.max(current.s, 0.55), v: Math.max(current.v, 0.72) } };
+    }
+    if (r <= disc) {
+      return { zone: "disc", hsv: { h: current.h, s: Math.min(1, r / disc), v: current.v } };
+    }
+    return null;
+  }
+  function drawColorWheel(ctx, size, current) {
+    const cx = size / 2;
+    const cy = size / 2;
+    const outer = size / 2 - 1;
+    const ringIn = outer - 16;
+    const disc = ringIn - 7;
+    ctx.clearRect(0, 0, size, size);
+    const img = ctx.createImageData(size, size);
+    const data = img.data;
+    for (let py = 0; py < size; py++) {
+      for (let px = 0; px < size; px++) {
+        const dx = px + 0.5 - cx;
+        const dy = py + 0.5 - cy;
+        const rr = Math.hypot(dx, dy);
+        if (rr > disc) continue;
+        const { r, g, b } = hsvToRgb(current.h, Math.min(1, rr / disc), current.v);
+        const i = (py * size + px) * 4;
+        data[i] = r;
+        data[i + 1] = g;
+        data[i + 2] = b;
+        data[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    const segs = 96;
+    for (let i = 0; i < segs; i++) {
+      const a0 = i / segs * Math.PI * 2 - Math.PI / 2;
+      const a1 = (i + 1.15) / segs * Math.PI * 2 - Math.PI / 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, outer, a0, a1);
+      ctx.arc(cx, cy, ringIn, a1, a0, true);
+      ctx.closePath();
+      ctx.fillStyle = hsvToHex(i / segs * 360, 1, 1);
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(cx, cy, disc + 0.5, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255,255,255,0.35)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    const ringA = (current.h - 90) * Math.PI / 180;
+    const ringR = (outer + ringIn) / 2;
+    ctx.beginPath();
+    ctx.arc(cx + Math.cos(ringA) * ringR, cy + Math.sin(ringA) * ringR, 5.5, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(20,18,16,0.45)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    const discA = (current.h - 90) * Math.PI / 180;
+    const discR = current.s * disc;
+    ctx.beginPath();
+    ctx.arc(cx + Math.cos(discA) * discR, cy + Math.sin(discA) * discR, 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(20,18,16,0.45)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
   // src/lib/grokbot/renderer.ts
   function fillPath(ctx, pts) {
     if (!pts.length) return;
@@ -1188,7 +1338,7 @@
     ctx.translate(dpr / 2, dpr / 2);
     const scale = dpr * (opts?.faceScale ?? 0.31) / FACE_R;
     ctx.scale(scale, scale);
-    const face = engine2.faceColor === "blue" ? theme.grok : theme.ink;
+    const face = resolveFaceHex(engine2.faceColor);
     const eyeFill = theme.eye;
     const spin = engine2.t.spin.value;
     if (spin) ctx.rotate(spin * Math.sin(performance.now() / 900) * 0.35);
@@ -1239,7 +1389,7 @@
       fillPath(ctx, body);
       ctx.fillStyle = face;
       ctx.fill();
-      shadeSphere(ctx, body, engine2.faceColor, lookX, lookY);
+      shadeSphere(ctx, body, face, lookX, lookY);
       ctx.globalAlpha = 1;
     }
     if (!hideBody && faceW > 0.05 && engine2.t.eyeAlpha.value > 0.02) {
@@ -1272,24 +1422,26 @@
     if (engine2.debug) drawDebug(ctx, engine2, theme);
     ctx.restore();
   }
-  function shadeSphere(ctx, body, faceColor, lookX, lookY) {
+  function shadeSphere(ctx, body, faceHex2, lookX, lookY) {
     ctx.save();
     fillPath(ctx, body);
     ctx.clip();
     const lx = -40 - lookX * 36;
     const ly = -48 - lookY * 28;
-    const blue = faceColor === "blue";
+    const lum = luminance(faceHex2);
+    const hi = 0.12 + (1 - lum) * 0.2;
+    const sh = 0.16 + lum * 0.22;
     const volume = ctx.createRadialGradient(lx, ly, 6, lx * 0.15, ly * 0.1, FACE_R * 1.38);
-    volume.addColorStop(0, `rgba(255,255,255,${blue ? 0.28 : 0.16})`);
-    volume.addColorStop(0.18, `rgba(255,255,255,${blue ? 0.12 : 0.06})`);
+    volume.addColorStop(0, `rgba(255,255,255,${hi})`);
+    volume.addColorStop(0.18, `rgba(255,255,255,${hi * 0.42})`);
     volume.addColorStop(0.48, "rgba(255,255,255,0)");
-    volume.addColorStop(0.78, `rgba(8,10,24,${blue ? 0.16 : 0.2})`);
-    volume.addColorStop(1, `rgba(4,6,16,${blue ? 0.36 : 0.42})`);
+    volume.addColorStop(0.78, `rgba(8,10,24,${sh * 0.55})`);
+    volume.addColorStop(1, `rgba(4,6,16,${sh})`);
     ctx.fillStyle = volume;
     ctx.fillRect(-FACE_R * 1.5, -FACE_R * 1.5, FACE_R * 3, FACE_R * 3);
     const spec = ctx.createRadialGradient(lx * 0.72, ly * 0.72, 0, lx * 0.72, ly * 0.72, 34);
-    spec.addColorStop(0, `rgba(255,255,255,${blue ? 0.28 : 0.16})`);
-    spec.addColorStop(0.35, `rgba(255,255,255,${blue ? 0.08 : 0.05})`);
+    spec.addColorStop(0, `rgba(255,255,255,${hi})`);
+    spec.addColorStop(0.35, `rgba(255,255,255,${hi * 0.3})`);
     spec.addColorStop(1, "rgba(255,255,255,0)");
     ctx.fillStyle = spec;
     ctx.fillRect(-FACE_R * 1.5, -FACE_R * 1.5, FACE_R * 3, FACE_R * 3);
@@ -1298,7 +1450,7 @@
     const rim = ctx.createRadialGradient(rimX, rimY, FACE_R * 0.35, 0, 0, FACE_R * 1.02);
     rim.addColorStop(0, "rgba(255,255,255,0)");
     rim.addColorStop(0.72, "rgba(255,255,255,0)");
-    rim.addColorStop(0.9, `rgba(210,224,255,${blue ? 0.22 : 0.08})`);
+    rim.addColorStop(0.9, `rgba(255,255,255,${0.08 + (1 - lum) * 0.12})`);
     rim.addColorStop(1, "rgba(255,255,255,0)");
     ctx.fillStyle = rim;
     ctx.fillRect(-FACE_R * 1.5, -FACE_R * 1.5, FACE_R * 3, FACE_R * 3);
@@ -1498,12 +1650,22 @@
     eye: "#fffdf8",
     muted: "#6e6a62"
   };
+  var COLOR_KEY = "grok-face-color";
+  var pet = Boolean(window.pet?.isPet || new URLSearchParams(location.search).has("pet"));
+  if (pet) document.documentElement.classList.add("pet");
   var engine = new GrokBotEngine();
-  engine.setFaceColor("blue");
   engine.setFollowPointer(true);
   engine.setAutoIdle(true);
+  var faceHex = GROK_BLUE;
+  try {
+    faceHex = localStorage.getItem(COLOR_KEY) || GROK_BLUE;
+  } catch {
+  }
+  engine.setFaceColor(faceHex);
   var canvas = document.querySelector("#face");
   var wrap = canvas.parentElement;
+  var wheel = document.querySelector("#wheel");
+  var presets = document.querySelector("#presets");
   function sizeCanvas() {
     const css = canvas.clientWidth || 360;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -1513,14 +1675,28 @@
       canvas.height = px;
     }
   }
+  function paintWheel() {
+    const ctx = wheel.getContext("2d");
+    if (ctx) drawColorWheel(ctx, 108, hexToHsv(resolveFaceHex(faceHex)));
+  }
+  function setColor(hex) {
+    faceHex = hex;
+    engine.setFaceColor(hex);
+    paintWheel();
+    try {
+      localStorage.setItem(COLOR_KEY, hex);
+    } catch {
+    }
+  }
   var tick = (now) => {
     engine.tick(now);
     const ctx = canvas.getContext("2d");
-    if (ctx) drawGrokBot(ctx, engine, canvas.width || 480, THEME, { faceScale: 0.36 });
+    if (ctx) drawGrokBot(ctx, engine, canvas.width || 480, THEME, { faceScale: 0.4 });
     requestAnimationFrame(tick);
   };
   new ResizeObserver(sizeCanvas).observe(wrap);
   sizeCanvas();
+  paintWheel();
   requestAnimationFrame(tick);
   window.addEventListener(
     "pointermove",
@@ -1550,5 +1726,48 @@
   };
   document.querySelectorAll("[data-act]").forEach((btn) => {
     btn.addEventListener("click", () => actions[btn.dataset.act ?? ""]?.());
+  });
+  FACE_PRESETS.forEach((p) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.title = p.name;
+    b.style.background = p.hex;
+    b.addEventListener("click", () => setColor(p.hex));
+    presets.appendChild(b);
+  });
+  var pickWheel = (e2) => {
+    const r = wheel.getBoundingClientRect();
+    const hit = hitColorWheel(
+      (e2.clientX - r.left) / r.width * 108,
+      (e2.clientY - r.top) / r.height * 108,
+      108,
+      hexToHsv(resolveFaceHex(faceHex))
+    );
+    if (hit) setColor(hsvToHex(hit.hsv.h, hit.hsv.s, hit.hsv.v));
+  };
+  wheel.addEventListener("pointerdown", (e2) => {
+    wheel.setPointerCapture(e2.pointerId);
+    pickWheel(e2);
+  });
+  wheel.addEventListener("pointermove", (e2) => {
+    if (e2.buttons) pickWheel(e2);
+  });
+  var dragging = null;
+  wrap.addEventListener("pointerdown", (e2) => {
+    dragging = { x: e2.screenX, y: e2.screenY, moved: false };
+    wrap.setPointerCapture(e2.pointerId);
+  });
+  wrap.addEventListener("pointermove", (e2) => {
+    if (!dragging) return;
+    const dx = e2.screenX - dragging.x;
+    const dy = e2.screenY - dragging.y;
+    if (Math.hypot(dx, dy) > 3) dragging.moved = true;
+    if (pet && window.pet) window.pet.moveBy(dx, dy);
+    dragging.x = e2.screenX;
+    dragging.y = e2.screenY;
+  });
+  wrap.addEventListener("pointerup", () => {
+    if (dragging && !dragging.moved) engine.blink();
+    dragging = null;
   });
 })();

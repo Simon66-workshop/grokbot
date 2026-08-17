@@ -4,6 +4,7 @@ import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useEffect } from "react";
 import { GrokBotCanvas } from "@/components/grokbot/GrokBotCanvas";
+import { ColorWheel } from "@/components/grokbot/ColorWheel";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
@@ -371,11 +372,13 @@ function LabPanel() {
             checked={s.autoIdle}
             onChange={(v) => s.set({ autoIdle: v })}
           />
-          <Toggle
-            label="Grok blue face"
-            checked={s.faceColor === "blue"}
-            onChange={(v) => s.set({ faceColor: v ? "blue" : "ink" })}
-          />
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-ink">Body color</p>
+            <ColorWheel
+              value={s.faceColor}
+              onChange={(hex) => s.set({ faceColor: hex })}
+            />
+          </div>
         </div>
       </div>
     </div>

@@ -2,6 +2,7 @@ import { FACE_R, type Point } from "./types";
 import { clamp, lerp } from "./math";
 import type { GrokBotEngine } from "./engine";
 import { stadiumPath } from "./paths";
+import { luminance, resolveFaceHex } from "./color";
 
 export type ThemeColors = {
   ink: string;
@@ -37,7 +38,7 @@ export function drawGrokBot(
   const scale = (dpr * (opts?.faceScale ?? 0.31)) / FACE_R;
   ctx.scale(scale, scale);
 
-  const face = engine.faceColor === "blue" ? theme.grok : theme.ink;
+  const face = resolveFaceHex(engine.faceColor);
   const eyeFill = theme.eye;
   const spin = engine.t.spin.value;
   if (spin) ctx.rotate(spin * Math.sin(performance.now() / 900) * 0.35);
@@ -95,7 +96,7 @@ export function drawGrokBot(
     fillPath(ctx, body);
     ctx.fillStyle = face;
     ctx.fill();
-    shadeSphere(ctx, body, engine.faceColor, lookX, lookY);
+    shadeSphere(ctx, body, face, lookX, lookY);
     ctx.globalAlpha = 1;
   }
 
@@ -139,7 +140,7 @@ export function drawGrokBot(
 function shadeSphere(
   ctx: CanvasRenderingContext2D,
   body: Point[],
-  faceColor: "ink" | "blue",
+  faceHex: string,
   lookX: number,
   lookY: number,
 ) {
@@ -149,20 +150,22 @@ function shadeSphere(
 
   const lx = -40 - lookX * 36;
   const ly = -48 - lookY * 28;
-  const blue = faceColor === "blue";
+  const lum = luminance(faceHex);
+  const hi = 0.12 + (1 - lum) * 0.2;
+  const sh = 0.16 + lum * 0.22;
 
   const volume = ctx.createRadialGradient(lx, ly, 6, lx * 0.15, ly * 0.1, FACE_R * 1.38);
-  volume.addColorStop(0, `rgba(255,255,255,${blue ? 0.28 : 0.16})`);
-  volume.addColorStop(0.18, `rgba(255,255,255,${blue ? 0.12 : 0.06})`);
+  volume.addColorStop(0, `rgba(255,255,255,${hi})`);
+  volume.addColorStop(0.18, `rgba(255,255,255,${hi * 0.42})`);
   volume.addColorStop(0.48, "rgba(255,255,255,0)");
-  volume.addColorStop(0.78, `rgba(8,10,24,${blue ? 0.16 : 0.2})`);
-  volume.addColorStop(1, `rgba(4,6,16,${blue ? 0.36 : 0.42})`);
+  volume.addColorStop(0.78, `rgba(8,10,24,${sh * 0.55})`);
+  volume.addColorStop(1, `rgba(4,6,16,${sh})`);
   ctx.fillStyle = volume;
   ctx.fillRect(-FACE_R * 1.5, -FACE_R * 1.5, FACE_R * 3, FACE_R * 3);
 
   const spec = ctx.createRadialGradient(lx * 0.72, ly * 0.72, 0, lx * 0.72, ly * 0.72, 34);
-  spec.addColorStop(0, `rgba(255,255,255,${blue ? 0.28 : 0.16})`);
-  spec.addColorStop(0.35, `rgba(255,255,255,${blue ? 0.08 : 0.05})`);
+  spec.addColorStop(0, `rgba(255,255,255,${hi})`);
+  spec.addColorStop(0.35, `rgba(255,255,255,${hi * 0.3})`);
   spec.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = spec;
   ctx.fillRect(-FACE_R * 1.5, -FACE_R * 1.5, FACE_R * 3, FACE_R * 3);
@@ -172,7 +175,7 @@ function shadeSphere(
   const rim = ctx.createRadialGradient(rimX, rimY, FACE_R * 0.35, 0, 0, FACE_R * 1.02);
   rim.addColorStop(0, "rgba(255,255,255,0)");
   rim.addColorStop(0.72, "rgba(255,255,255,0)");
-  rim.addColorStop(0.9, `rgba(210,224,255,${blue ? 0.22 : 0.08})`);
+  rim.addColorStop(0.9, `rgba(255,255,255,${0.08 + (1 - lum) * 0.12})`);
   rim.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = rim;
   ctx.fillRect(-FACE_R * 1.5, -FACE_R * 1.5, FACE_R * 3, FACE_R * 3);

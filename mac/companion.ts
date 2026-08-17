@@ -1,5 +1,14 @@
 import { GrokBotEngine } from "../src/lib/grokbot/engine";
 import { drawGrokBot, type ThemeColors } from "../src/lib/grokbot/renderer";
+import {
+  FACE_PRESETS,
+  GROK_BLUE,
+  drawColorWheel,
+  hexToHsv,
+  hitColorWheel,
+  hsvToHex,
+  resolveFaceHex,
+} from "../src/lib/grokbot/color";
 
 const THEME: ThemeColors = {
   ink: "#161513",
@@ -9,13 +18,26 @@ const THEME: ThemeColors = {
   muted: "#6e6a62",
 };
 
+const COLOR_KEY = "grok-face-color";
+const pet = Boolean(window.pet?.isPet || new URLSearchParams(location.search).has("pet"));
+if (pet) document.documentElement.classList.add("pet");
+
 const engine = new GrokBotEngine();
-engine.setFaceColor("blue");
 engine.setFollowPointer(true);
 engine.setAutoIdle(true);
 
+let faceHex = GROK_BLUE;
+try {
+  faceHex = localStorage.getItem(COLOR_KEY) || GROK_BLUE;
+} catch {
+  /* ignore */
+}
+engine.setFaceColor(faceHex);
+
 const canvas = document.querySelector<HTMLCanvasElement>("#face")!;
 const wrap = canvas.parentElement!;
+const wheel = document.querySelector<HTMLCanvasElement>("#wheel")!;
+const presets = document.querySelector<HTMLDivElement>("#presets")!;
 
 function sizeCanvas() {
   const css = canvas.clientWidth || 360;
@@ -27,15 +49,32 @@ function sizeCanvas() {
   }
 }
 
+function paintWheel() {
+  const ctx = wheel.getContext("2d");
+  if (ctx) drawColorWheel(ctx, 108, hexToHsv(resolveFaceHex(faceHex)));
+}
+
+function setColor(hex: string) {
+  faceHex = hex;
+  engine.setFaceColor(hex);
+  paintWheel();
+  try {
+    localStorage.setItem(COLOR_KEY, hex);
+  } catch {
+    /* ignore */
+  }
+}
+
 const tick = (now: number) => {
   engine.tick(now);
   const ctx = canvas.getContext("2d");
-  if (ctx) drawGrokBot(ctx, engine, canvas.width || 480, THEME, { faceScale: 0.36 });
+  if (ctx) drawGrokBot(ctx, engine, canvas.width || 480, THEME, { faceScale: 0.4 });
   requestAnimationFrame(tick);
 };
 
 new ResizeObserver(sizeCanvas).observe(wrap);
 sizeCanvas();
+paintWheel();
 requestAnimationFrame(tick);
 
 window.addEventListener(
@@ -69,4 +108,50 @@ const actions: Record<string, () => void> = {
 
 document.querySelectorAll<HTMLButtonElement>("[data-act]").forEach((btn) => {
   btn.addEventListener("click", () => actions[btn.dataset.act ?? ""]?.());
+});
+
+FACE_PRESETS.forEach((p) => {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.title = p.name;
+  b.style.background = p.hex;
+  b.addEventListener("click", () => setColor(p.hex));
+  presets.appendChild(b);
+});
+
+const pickWheel = (e: PointerEvent) => {
+  const r = wheel.getBoundingClientRect();
+  const hit = hitColorWheel(
+    ((e.clientX - r.left) / r.width) * 108,
+    ((e.clientY - r.top) / r.height) * 108,
+    108,
+    hexToHsv(resolveFaceHex(faceHex)),
+  );
+  if (hit) setColor(hsvToHex(hit.hsv.h, hit.hsv.s, hit.hsv.v));
+};
+wheel.addEventListener("pointerdown", (e) => {
+  wheel.setPointerCapture(e.pointerId);
+  pickWheel(e);
+});
+wheel.addEventListener("pointermove", (e) => {
+  if (e.buttons) pickWheel(e);
+});
+
+let dragging: { x: number; y: number; moved: boolean } | null = null;
+wrap.addEventListener("pointerdown", (e) => {
+  dragging = { x: e.screenX, y: e.screenY, moved: false };
+  wrap.setPointerCapture(e.pointerId);
+});
+wrap.addEventListener("pointermove", (e) => {
+  if (!dragging) return;
+  const dx = e.screenX - dragging.x;
+  const dy = e.screenY - dragging.y;
+  if (Math.hypot(dx, dy) > 3) dragging.moved = true;
+  if (pet && window.pet) window.pet.moveBy(dx, dy);
+  dragging.x = e.screenX;
+  dragging.y = e.screenY;
+});
+wrap.addEventListener("pointerup", () => {
+  if (dragging && !dragging.moved) engine.blink();
+  dragging = null;
 });

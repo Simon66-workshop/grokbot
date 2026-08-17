@@ -19,65 +19,86 @@
         background: var(--paper);
         color: var(--ink);
         font-family: "SF Pro Text", "Helvetica Neue", sans-serif;
+        overflow: hidden;
       }
+      html.pet, html.pet body { background: transparent; }
       .stage {
         min-height: 100%;
-        display: grid;
-        place-items: center;
-        padding: 32px 20px 80px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        padding: 8px 12px 20px;
       }
       .face {
-        width: min(72vw, 420px);
+        width: min(72vw, 300px);
         aspect-ratio: 1;
+        cursor: grab;
       }
-      canvas { display: block; width: 100%; height: 100%; }
-      .bar {
-        position: fixed;
-        left: 50%;
-        bottom: 22px;
-        transform: translateX(-50%);
+      .face:active { cursor: grabbing; }
+      canvas.bot { display: block; width: 100%; height: 100%; }
+      #wheel { display: block; width: 108px; height: 108px; cursor: crosshair; }
+      .dock {
         display: flex;
-        gap: 6px;
-        padding: 6px;
-        background: rgba(255, 252, 246, 0.92);
-        border: 1px solid var(--line);
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        margin-top: 4px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 160ms ease;
+      }
+      .stage:hover .dock, .dock.open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .presets { display: flex; gap: 6px; }
+      .presets button {
+        width: 16px; height: 16px; border-radius: 999px;
+        border: 1px solid rgba(22,21,19,0.18);
+        padding: 0; cursor: pointer;
+      }
+      .bar {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 4px;
+        padding: 5px;
+        background: rgba(22, 21, 19, 0.55);
         border-radius: 999px;
         backdrop-filter: blur(16px);
       }
       .bar button {
         border: 0;
         background: transparent;
-        color: var(--muted);
-        font: 500 12px/1 "SF Pro Text", sans-serif;
-        padding: 8px 11px;
+        color: #fffcf6;
+        font: 500 11px/1 "SF Pro Text", sans-serif;
+        padding: 7px 9px;
         border-radius: 999px;
         cursor: pointer;
       }
-      .bar button:hover { color: var(--ink); background: rgba(22, 21, 19, 0.05); }
-      .hint {
-        position: fixed;
-        top: 18px;
-        left: 22px;
-        font-size: 12px;
-        color: var(--muted);
-        letter-spacing: 0.04em;
-      }
+      .bar button:hover { background: rgba(255,255,255,0.12); }
     </style>
   </head>
   <body>
-    <div class="hint">GrokBot · 空格眨眼 · D 演示 · R 复位</div>
     <div class="stage">
-      <div class="face"><canvas id="face" aria-label="Grok Bot"></canvas></div>
-    </div>
-    <div class="bar">
-      <button data-act="idle">Idle</button>
-      <button data-act="blink">Blink</button>
-      <button data-act="look">Look</button>
-      <button data-act="joy">Joy</button>
-      <button data-act="think">Think</button>
-      <button data-act="wow">Wow</button>
-      <button data-act="orbit">Orbit</button>
-      <button data-act="tour">Tour</button>
+      <div class="face" id="drag">
+        <canvas id="face" class="bot" aria-label="Grok Bot"></canvas>
+      </div>
+      <div class="dock" id="dock">
+        <canvas id="wheel" width="108" height="108" aria-label="Body color"></canvas>
+        <div class="presets" id="presets"></div>
+        <div class="bar">
+          <button data-act="idle">Idle</button>
+          <button data-act="blink">Blink</button>
+          <button data-act="look">Look</button>
+          <button data-act="joy">Joy</button>
+          <button data-act="think">Think</button>
+          <button data-act="wow">Wow</button>
+          <button data-act="orbit">Orbit</button>
+          <button data-act="tour">Tour</button>
+        </div>
+      </div>
     </div>
     <script src="./grokbot.js"></script>
   </body>
