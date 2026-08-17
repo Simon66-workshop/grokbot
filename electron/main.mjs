@@ -35,8 +35,8 @@ function clampToDisplay(x, y, w, h) {
   const d = screen.getDisplayNearestPoint({ x, y });
   const a = d.workArea;
   return {
-    x: Math.min(a.x + a.width - 64, Math.max(a.x - w + 64, x)),
-    y: Math.min(a.y + a.height - 64, Math.max(a.y - 24, y)),
+    x: Math.min(a.x + a.width - w, Math.max(a.x, x)),
+    y: Math.min(a.y + a.height - h, Math.max(a.y, y)),
   };
 }
 

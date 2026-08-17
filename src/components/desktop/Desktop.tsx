@@ -66,8 +66,8 @@ const MOODS: { label: string; run: () => void }[] = [
 
 function clampPos(x: number, y: number, w: number, h: number) {
   return {
-    x: Math.min(window.innerWidth - 72, Math.max(72 - w, x)),
-    y: Math.min(window.innerHeight - 72, Math.max(8, y)),
+    x: Math.min(Math.max(8, window.innerWidth - w - 8), Math.max(8, x)),
+    y: Math.min(Math.max(8, window.innerHeight - h - 8), Math.max(8, y)),
   };
 }
 
@@ -360,7 +360,7 @@ export function Desktop() {
           onPointerUp={onDragEnd}
           onPointerCancel={onDragEnd}
         >
-          <GrokBotCanvas followGlobal faceScale={0.42} className="w-full" />
+          <GrokBotCanvas followGlobal faceScale={0.34} className="w-full" />
         </div>
         {dock}
       </div>
