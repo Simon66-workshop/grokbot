@@ -11,6 +11,18 @@ contextBridge.exposeInMainWorld("pet", {
   moveBy(dx, dy) {
     ipcRenderer.send("pet-move-by", dx, dy);
   },
+  dragStart() {
+    ipcRenderer.send("pet-drag-start");
+  },
+  dragEnd() {
+    return ipcRenderer.invoke("pet-drag-end");
+  },
+  onDragArmed(fn) {
+    return listen("pet-drag-armed", fn);
+  },
+  onDragFinished(fn) {
+    return listen("pet-drag-finished", fn);
+  },
   setClickThrough(on) {
     ipcRenderer.send("pet-click-through", on);
   },

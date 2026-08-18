@@ -1,8 +1,16 @@
 /// <reference types="vite/client" />
 
+interface PetDragResult {
+  moved: boolean;
+}
+
 interface PetBridge {
   isPet: boolean;
   moveBy: (dx: number, dy: number) => void;
+  dragStart?: () => void;
+  dragEnd?: () => Promise<PetDragResult>;
+  onDragArmed?: (fn: () => void) => () => void;
+  onDragFinished?: (fn: (result: PetDragResult) => void) => () => void;
   setClickThrough?: (on: boolean) => void;
   setDock?: (open: boolean) => void;
   onCursor?: (fn: (x: number, y: number) => void) => () => void;

@@ -2076,6 +2076,7 @@
   var HOLD_MS = 220;
   var TAP_MS = 280;
   var DBL_MS = 340;
+  var DRAG_ARM_PX = 6;
   var COLOR_KEY = "grok-face-color";
   var POS_KEY = "grok-companion-pos";
   var first = layoutFor("l");
@@ -2140,31 +2141,41 @@
       get holding() {
         return holding;
       },
+      get dragging() {
+        return Boolean(press?.moved);
+      },
+      get pressed() {
+        return Boolean(press);
+      },
+      markMoved() {
+        if (!press) return;
+        press.moved = true;
+        holding = true;
+      },
       onDown(e2) {
         press = {
           sx: e2.screenX,
           sy: e2.screenY,
-          cx: e2.clientX,
-          cy: e2.clientY,
-          armed: false,
+          ox: e2.screenX,
+          oy: e2.screenY,
           moved: false,
           timer: window.setTimeout(() => {
             if (!press) return;
-            press.armed = true;
             holding = true;
           }, HOLD_MS)
         };
       },
       onMove(e2) {
         if (!press) return null;
-        if (!press.armed) return null;
+        const travel = Math.hypot(e2.screenX - press.ox, e2.screenY - press.oy);
+        if (!press.moved && travel < DRAG_ARM_PX) return null;
+        press.moved = true;
+        holding = true;
         const dx = e2.screenX - press.sx;
         const dy = e2.screenY - press.sy;
-        if (Math.hypot(dx, dy) > 3) press.moved = true;
-        const out = { dx, dy, clientX: e2.clientX, clientY: e2.clientY };
         press.sx = e2.screenX;
         press.sy = e2.screenY;
-        return out;
+        return { dx, dy, clientX: e2.clientX, clientY: e2.clientY };
       },
       onUp() {
         if (press) window.clearTimeout(press.timer);
@@ -2396,6 +2407,18 @@
     const menuCtx = menuBot?.getContext("2d") ?? null;
     const setThrough = (on) => window.pet?.setClickThrough?.(on);
     if (pet) setThrough(true);
+    let petDrag = false;
+    let pointerGen = 0;
+    let finishing = false;
+    function canClickThrough() {
+      return !dockOpen && !gesture.pressed && !gesture.holding && !petDrag && !dragging;
+    }
+    function interactOn() {
+      setThrough(false);
+    }
+    function interactOff() {
+      if (canClickThrough()) setThrough(true);
+    }
     function paintScene() {
       sceneBar.querySelectorAll("[data-scene]").forEach((btn) => {
         btn.classList.toggle("on", btn.dataset.scene === engine.scene);
@@ -2481,9 +2504,11 @@
       dockOpen = open;
       stage.classList.toggle("open", open);
       if (open) {
-        setThrough(false);
+        interactOn();
         if (sceneSfx()) playSfx("dock");
-      } else if (!gesture.holding) setThrough(true);
+      } else {
+        interactOff();
+      }
     }
     const offBlink = engine.on("blink", () => {
       if (sceneSfx()) playSfx("blink");
@@ -2527,10 +2552,10 @@
       dock.addEventListener("pointerleave", onFaceLeave);
     }
     function onFaceEnter() {
-      setThrough(false);
+      interactOn();
     }
     function onFaceLeave() {
-      if (!gesture.holding && !dockOpen) setThrough(true);
+      interactOff();
     }
     function sizeCanvas() {
       const fit = (el, fallback) => {
@@ -2810,13 +2835,26 @@
     if (web) window.addEventListener("pointerdown", onBg);
     let waking = false;
     const onDown = (e2) => {
+      if (e2.button !== 0) return;
+      e2.preventDefault();
+      pointerGen += 1;
+      finishing = false;
       waking = engine.state === "sleep";
       engine.noteInput();
       vel = { x: 0, y: 0 };
       dragging = false;
       last = { x: e2.screenX, y: e2.screenY, t: performance.now() };
       gesture.onDown(e2);
-      wrap.setPointerCapture(e2.pointerId);
+      interactOn();
+      if (pet && window.pet?.dragStart) {
+        petDrag = true;
+        window.pet.dragStart();
+      } else {
+        try {
+          wrap.setPointerCapture(e2.pointerId);
+        } catch {
+        }
+      }
     };
     const onMove = (e2) => {
       const move = gesture.onMove(e2);
@@ -2828,20 +2866,13 @@
         x: (e2.screenX - last.x) / dt * 16,
         y: (e2.screenY - last.y) / dt * 16
       };
-      const prevX = last.x;
-      const prevY = last.y;
       last = { x: e2.screenX, y: e2.screenY, t: now };
       dragging = true;
-      if (pet && window.pet) {
-        window.pet.moveBy(e2.screenX - prevX, e2.screenY - prevY);
-      } else {
-        pos = clampPoint(pos.x + move.dx, pos.y + move.dy, area());
-        placeWeb();
-      }
+      if (pet) return;
+      pos = clampPoint(pos.x + move.dx, pos.y + move.dy, area());
+      placeWeb();
     };
-    const onUp = () => {
-      wrap.classList.remove("hold");
-      const kind = gesture.onUp();
+    function applyPointerKind(kind) {
       if (kind === "dbl") {
         gesture.cancelTap();
         engine.noteInput();
@@ -2864,17 +2895,63 @@
       }
       dragging = false;
       saveWebPos();
-      placeWeb();
+      if (web) placeWeb();
+      interactOff();
+    }
+    async function finishPointer(mainMoved) {
+      if (finishing) return;
+      if (!gesture.pressed && !petDrag) return;
+      finishing = true;
+      const my = pointerGen;
+      wrap.classList.remove("hold");
+      let kind = gesture.onUp();
+      if (pet && window.pet?.dragEnd && petDrag) {
+        petDrag = false;
+        try {
+          const result = await window.pet.dragEnd();
+          if (result?.moved) kind = "drag";
+        } catch {
+        }
+      }
+      petDrag = false;
+      if (mainMoved) kind = "drag";
+      if (my !== pointerGen) return;
+      applyPointerKind(kind);
+      finishing = false;
+    }
+    const onUp = (e2) => {
+      if (e2.button !== 0) return;
+      void finishPointer();
+    };
+    const onCancel = () => {
+      if (pet && (petDrag || gesture.dragging || gesture.pressed)) return;
+      void finishPointer();
+    };
+    const onWinUp = (e2) => {
+      if (!gesture.pressed && !petDrag) return;
+      if ("button" in e2 && e2.button !== 0) return;
+      void finishPointer();
     };
     wrap.addEventListener("pointerdown", onDown);
     wrap.addEventListener("pointermove", onMove);
     wrap.addEventListener("pointerup", onUp);
-    wrap.addEventListener("pointercancel", onUp);
+    wrap.addEventListener("pointercancel", onCancel);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onWinUp, true);
+    window.addEventListener("mouseup", onWinUp, true);
     const onMenu = (e2) => {
       e2.preventDefault();
       if (pet) window.pet?.hide?.();
     };
     wrap.addEventListener("contextmenu", onMenu);
+    const offDragArmed = window.pet?.onDragArmed?.(() => {
+      wrap.classList.add("hold");
+      gesture.markMoved();
+      dragging = true;
+    });
+    const offDragFinished = window.pet?.onDragFinished?.((result) => {
+      void finishPointer(Boolean(result?.moved));
+    });
     return () => {
       disposed = true;
       cancelAnimationFrame(raf);
@@ -2894,7 +2971,10 @@
       wrap.removeEventListener("pointerdown", onDown);
       wrap.removeEventListener("pointermove", onMove);
       wrap.removeEventListener("pointerup", onUp);
-      wrap.removeEventListener("pointercancel", onUp);
+      wrap.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onWinUp, true);
+      window.removeEventListener("mouseup", onWinUp, true);
       wrap.removeEventListener("contextmenu", onMenu);
       wrap.removeEventListener("pointerenter", onFaceEnter);
       wrap.removeEventListener("pointerleave", onFaceLeave);
@@ -2910,6 +2990,8 @@
       if (typeof offMeeting === "function") offMeeting();
       if (typeof offSize === "function") offSize();
       if (typeof offAuto === "function") offAuto();
+      if (typeof offDragArmed === "function") offDragArmed();
+      if (typeof offDragFinished === "function") offDragFinished();
       window.clearInterval(autoTimer);
     };
   }

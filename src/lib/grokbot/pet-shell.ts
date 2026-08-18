@@ -28,6 +28,7 @@ import {
 export const HOLD_MS = 220;
 export const TAP_MS = 280;
 export const DBL_MS = 340;
+export const DRAG_ARM_PX = 6;
 export const COLOR_KEY = "grok-face-color";
 export const POS_KEY = "grok-companion-pos";
 
@@ -106,10 +107,9 @@ export function createPetGesture() {
   let press: {
     sx: number;
     sy: number;
-    cx: number;
-    cy: number;
+    ox: number;
+    oy: number;
     timer: number;
-    armed: boolean;
     moved: boolean;
   } | null = null;
   let tapAt = 0;
@@ -120,31 +120,41 @@ export function createPetGesture() {
     get holding() {
       return holding;
     },
+    get dragging() {
+      return Boolean(press?.moved);
+    },
+    get pressed() {
+      return Boolean(press);
+    },
+    markMoved() {
+      if (!press) return;
+      press.moved = true;
+      holding = true;
+    },
     onDown(e: { screenX: number; screenY: number; clientX: number; clientY: number }) {
       press = {
         sx: e.screenX,
         sy: e.screenY,
-        cx: e.clientX,
-        cy: e.clientY,
-        armed: false,
+        ox: e.screenX,
+        oy: e.screenY,
         moved: false,
         timer: window.setTimeout(() => {
           if (!press) return;
-          press.armed = true;
           holding = true;
         }, HOLD_MS),
       };
     },
     onMove(e: { screenX: number; screenY: number; clientX: number; clientY: number }) {
       if (!press) return null;
-      if (!press.armed) return null;
+      const travel = Math.hypot(e.screenX - press.ox, e.screenY - press.oy);
+      if (!press.moved && travel < DRAG_ARM_PX) return null;
+      press.moved = true;
+      holding = true;
       const dx = e.screenX - press.sx;
       const dy = e.screenY - press.sy;
-      if (Math.hypot(dx, dy) > 3) press.moved = true;
-      const out = { dx, dy, clientX: e.clientX, clientY: e.clientY };
       press.sx = e.screenX;
       press.sy = e.screenY;
-      return out;
+      return { dx, dy, clientX: e.clientX, clientY: e.clientY };
     },
     onUp(): GestureKind {
       if (press) window.clearTimeout(press.timer);
@@ -399,6 +409,22 @@ export function bootMacCompanion(opts: BootOptions = {}) {
   const setThrough = (on: boolean) => window.pet?.setClickThrough?.(on);
   if (pet) setThrough(true);
 
+  let petDrag = false;
+  let pointerGen = 0;
+  let finishing = false;
+
+  function canClickThrough() {
+    return !dockOpen && !gesture.pressed && !gesture.holding && !petDrag && !dragging;
+  }
+
+  function interactOn() {
+    setThrough(false);
+  }
+
+  function interactOff() {
+    if (canClickThrough()) setThrough(true);
+  }
+
   function paintScene() {
     sceneBar.querySelectorAll<HTMLButtonElement>("[data-scene]").forEach((btn) => {
       btn.classList.toggle("on", btn.dataset.scene === engine.scene);
@@ -496,9 +522,11 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     dockOpen = open;
     stage.classList.toggle("open", open);
     if (open) {
-      setThrough(false);
+      interactOn();
       if (sceneSfx()) playSfx("dock");
-    } else if (!gesture.holding) setThrough(true);
+    } else {
+      interactOff();
+    }
   }
 
   const offBlink = engine.on("blink", () => {
@@ -546,10 +574,10 @@ export function bootMacCompanion(opts: BootOptions = {}) {
   }
 
   function onFaceEnter() {
-    setThrough(false);
+    interactOn();
   }
   function onFaceLeave() {
-    if (!gesture.holding && !dockOpen) setThrough(true);
+    interactOff();
   }
 
   function sizeCanvas() {
@@ -861,14 +889,29 @@ export function bootMacCompanion(opts: BootOptions = {}) {
   let waking = false;
 
   const onDown = (e: PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    pointerGen += 1;
+    finishing = false;
     waking = engine.state === "sleep";
     engine.noteInput();
     vel = { x: 0, y: 0 };
     dragging = false;
     last = { x: e.screenX, y: e.screenY, t: performance.now() };
     gesture.onDown(e);
-    wrap.setPointerCapture(e.pointerId);
+    interactOn();
+    if (pet && window.pet?.dragStart) {
+      petDrag = true;
+      window.pet.dragStart();
+    } else {
+      try {
+        wrap.setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+    }
   };
+
   const onMove = (e: PointerEvent) => {
     const move = gesture.onMove(e);
     if (!move) return;
@@ -879,20 +922,14 @@ export function bootMacCompanion(opts: BootOptions = {}) {
       x: ((e.screenX - last.x) / dt) * 16,
       y: ((e.screenY - last.y) / dt) * 16,
     };
-    const prevX = last.x;
-    const prevY = last.y;
     last = { x: e.screenX, y: e.screenY, t: now };
     dragging = true;
-    if (pet && window.pet) {
-      window.pet.moveBy(e.screenX - prevX, e.screenY - prevY);
-    } else {
-      pos = clampPoint(pos.x + move.dx, pos.y + move.dy, area());
-      placeWeb();
-    }
+    if (pet) return;
+    pos = clampPoint(pos.x + move.dx, pos.y + move.dy, area());
+    placeWeb();
   };
-  const onUp = () => {
-    wrap.classList.remove("hold");
-    const kind = gesture.onUp();
+
+  function applyPointerKind(kind: GestureKind) {
     if (kind === "dbl") {
       gesture.cancelTap();
       engine.noteInput();
@@ -915,18 +952,70 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     }
     dragging = false;
     saveWebPos();
-    placeWeb();
+    if (web) placeWeb();
+    interactOff();
+  }
+
+  async function finishPointer(mainMoved?: boolean) {
+    if (finishing) return;
+    if (!gesture.pressed && !petDrag) return;
+    finishing = true;
+    const my = pointerGen;
+    wrap.classList.remove("hold");
+    let kind = gesture.onUp();
+    if (pet && window.pet?.dragEnd && petDrag) {
+      petDrag = false;
+      try {
+        const result = await window.pet.dragEnd();
+        if (result?.moved) kind = "drag";
+      } catch {
+        /* ignore */
+      }
+    }
+    petDrag = false;
+    if (mainMoved) kind = "drag";
+    if (my !== pointerGen) return;
+    applyPointerKind(kind);
+    finishing = false;
+  }
+
+  const onUp = (e: PointerEvent) => {
+    if (e.button !== 0) return;
+    void finishPointer();
+  };
+
+  const onCancel = () => {
+    if (pet && (petDrag || gesture.dragging || gesture.pressed)) return;
+    void finishPointer();
+  };
+
+  const onWinUp = (e: Event) => {
+    if (!gesture.pressed && !petDrag) return;
+    if ("button" in e && (e as MouseEvent).button !== 0) return;
+    void finishPointer();
   };
 
   wrap.addEventListener("pointerdown", onDown);
   wrap.addEventListener("pointermove", onMove);
   wrap.addEventListener("pointerup", onUp);
-  wrap.addEventListener("pointercancel", onUp);
+  wrap.addEventListener("pointercancel", onCancel);
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onWinUp, true);
+  window.addEventListener("mouseup", onWinUp, true);
   const onMenu = (e: Event) => {
     e.preventDefault();
     if (pet) window.pet?.hide?.();
   };
   wrap.addEventListener("contextmenu", onMenu);
+
+  const offDragArmed = window.pet?.onDragArmed?.(() => {
+    wrap.classList.add("hold");
+    gesture.markMoved();
+    dragging = true;
+  });
+  const offDragFinished = window.pet?.onDragFinished?.((result) => {
+    void finishPointer(Boolean(result?.moved));
+  });
 
   return () => {
     disposed = true;
@@ -947,7 +1036,10 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     wrap.removeEventListener("pointerdown", onDown);
     wrap.removeEventListener("pointermove", onMove);
     wrap.removeEventListener("pointerup", onUp);
-    wrap.removeEventListener("pointercancel", onUp);
+    wrap.removeEventListener("pointercancel", onCancel);
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onWinUp, true);
+    window.removeEventListener("mouseup", onWinUp, true);
     wrap.removeEventListener("contextmenu", onMenu);
     wrap.removeEventListener("pointerenter", onFaceEnter);
     wrap.removeEventListener("pointerleave", onFaceLeave);
@@ -963,6 +1055,8 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     if (typeof offMeeting === "function") offMeeting();
     if (typeof offSize === "function") offSize();
     if (typeof offAuto === "function") offAuto();
+    if (typeof offDragArmed === "function") offDragArmed();
+    if (typeof offDragFinished === "function") offDragFinished();
     window.clearInterval(autoTimer);
   };
 }

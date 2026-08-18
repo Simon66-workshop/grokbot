@@ -23,6 +23,8 @@ let meeting = false;
 let petSize = "l";
 let layout = layoutFor("l");
 let lastIconAt = 0;
+const DRAG_ARM_PX = 6;
+let drag = null;
 
 function loadPrefs() {
   try {
@@ -124,9 +126,110 @@ function placeWindow(bx, by, nextSide) {
   const o = layout.ball[nextSide];
   const wx = Math.round(bx - o.x);
   const wy = Math.round(by - o.y);
+  const sideChanged = side !== nextSide;
   side = nextSide;
-  win.setBounds({ x: wx, y: wy, width: layout.w, height: layout.h });
-  win.webContents.send("pet-side", side);
+  const cur = win.getBounds();
+  if (cur.width === layout.w && cur.height === layout.h) {
+    win.setPosition(wx, wy);
+  } else {
+    win.setBounds({ x: wx, y: wy, width: layout.w, height: layout.h }, false);
+  }
+  if (sideChanged) win.webContents.send("pet-side", side);
+}
+
+function cursorInWindow() {
+  if (!win) return false;
+  const p = screen.getCursorScreenPoint();
+  const b = win.getBounds();
+  return p.x >= b.x && p.y >= b.y && p.x <= b.x + b.width && p.y <= b.y + b.height;
+}
+
+function readLeftButton() {
+  if (process.platform !== "darwin") return Promise.resolve(null);
+  return runCmd(
+    "osascript",
+    [
+      "-e",
+      'use framework "AppKit"',
+      "-e",
+      "(current application's NSEvent's pressedMouseButtons() as integer)",
+    ],
+    400,
+  ).then((out) => {
+    const n = parseInt(String(out).trim(), 10);
+    if (!Number.isFinite(n)) return null;
+    return (n & 1) === 1;
+  });
+}
+
+function startDrag() {
+  if (!win) return;
+  const cursor = screen.getCursorScreenPoint();
+  const b = ballScreen();
+  if (drag?.timer) clearInterval(drag.timer);
+  drag = {
+    ox: cursor.x - b.x,
+    oy: cursor.y - b.y,
+    startX: cursor.x,
+    startY: cursor.y,
+    armed: false,
+    sideLocked: side,
+    timer: null,
+    outsideSince: 0,
+    lastBtnCheck: 0,
+  };
+  win.setIgnoreMouseEvents(false);
+  drag.timer = setInterval(followDrag, 10);
+  followDrag();
+}
+
+function followDrag() {
+  if (!drag || !win || win.isDestroyed()) return;
+  const cursor = screen.getCursorScreenPoint();
+  const travel = Math.hypot(cursor.x - drag.startX, cursor.y - drag.startY);
+  if (!drag.armed && travel < DRAG_ARM_PX) return;
+  if (!drag.armed) {
+    drag.armed = true;
+    win.webContents.send("pet-drag-armed");
+  }
+  const next = { x: cursor.x - drag.ox, y: cursor.y - drag.oy };
+  const a = workAreaAt(next.x, next.y);
+  next.x = Math.min(a.x + a.width - 8, Math.max(a.x + 8, next.x));
+  next.y = Math.min(a.y + a.height - 8, Math.max(a.y + 8, next.y));
+  placeWindow(next.x, next.y, drag.sideLocked);
+  if (cursorInWindow()) {
+    drag.outsideSince = 0;
+    return;
+  }
+  const now = Date.now();
+  if (!drag.outsideSince) drag.outsideSince = now;
+  if (now - drag.lastBtnCheck > 180) {
+    drag.lastBtnCheck = now;
+    readLeftButton().then((down) => {
+      if (drag && down === false) forceEndDrag();
+    });
+  }
+  if (now - drag.outsideSince > 8000) forceEndDrag();
+}
+
+function endDrag() {
+  if (!drag) return { moved: false };
+  const moved = drag.armed;
+  if (drag.timer) clearInterval(drag.timer);
+  drag = null;
+  if (win && !win.isDestroyed()) {
+    const b = ballScreen();
+    const a = workAreaAt(b.x, b.y);
+    placeWindow(b.x, b.y, pickSide(b.x, b.y, a));
+    savePos();
+  }
+  return { moved };
+}
+
+function forceEndDrag() {
+  if (!drag) return;
+  const result = endDrag();
+  win?.webContents.send("pet-drag-finished", result);
 }
 
 function ballScreen() {
@@ -411,6 +514,8 @@ function wireDisplays() {
 }
 
 function cleanup() {
+  if (drag?.timer) clearInterval(drag.timer);
+  drag = null;
   stopCursor();
   if (meetTimer) clearInterval(meetTimer);
   if (calTimer) clearInterval(calTimer);
@@ -481,7 +586,10 @@ function create() {
     const b = ballScreen();
     placeWindow(b.x, b.y, side);
   });
-  win.on("moved", savePos);
+  win.on("moved", () => {
+    if (drag) return;
+    savePos();
+  });
   win.on("close", savePos);
   if (visible) startCursor();
 
@@ -504,6 +612,7 @@ function create() {
 }
 
 ipcMain.on("pet-move-by", (event, dx, dy) => {
+  if (drag) return;
   const w = BrowserWindow.fromWebContents(event.sender);
   if (!w || typeof dx !== "number" || typeof dy !== "number") return;
   const b = ballScreen();
@@ -514,7 +623,11 @@ ipcMain.on("pet-move-by", (event, dx, dy) => {
   placeWindow(next.x, next.y, pickSide(next.x, next.y, a));
 });
 
+ipcMain.on("pet-drag-start", () => startDrag());
+ipcMain.handle("pet-drag-end", () => endDrag());
+
 ipcMain.on("pet-click-through", (event, ignore) => {
+  if (drag) return;
   const w = BrowserWindow.fromWebContents(event.sender);
   if (!w) return;
   w.setIgnoreMouseEvents(Boolean(ignore), { forward: true });
