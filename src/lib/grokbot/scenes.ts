@@ -6,6 +6,8 @@ export type IdlePolicy = {
   autoLook: boolean;
   autoBounce: number;
   followPointer: boolean;
+  sfx: boolean;
+  sleepAfter: number;
 };
 
 export const SCENES: Record<
@@ -21,17 +23,21 @@ export const SCENES: Record<
       autoLook: false,
       autoBounce: 0,
       followPointer: false,
+      sfx: false,
+      sleepAfter: 0,
     },
   },
   companion: {
     label: "Play",
-    hint: "Looks at you. Sometimes hops.",
+    hint: "Looks at you. Sometimes hops. Naps if left alone.",
     idle: {
       breathe: 0.016,
       blink: true,
       autoLook: true,
       autoBounce: 0.16,
       followPointer: true,
+      sfx: true,
+      sleepAfter: 90,
     },
   },
   demo: {
@@ -43,6 +49,8 @@ export const SCENES: Record<
       autoLook: false,
       autoBounce: 0,
       followPointer: false,
+      sfx: true,
+      sleepAfter: 0,
     },
   },
 };
@@ -65,4 +73,8 @@ export function writeScene(id: SceneId) {
   } catch {
     /* ignore */
   }
+}
+
+export function isSceneId(v: string): v is SceneId {
+  return v === "work" || v === "companion" || v === "demo";
 }

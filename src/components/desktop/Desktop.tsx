@@ -47,6 +47,13 @@ function MacDesktop() {
       <div className="absolute inset-x-0 top-0 flex h-7 items-center justify-between px-3 text-[12px] text-ink/80">
         <div className="flex items-center gap-3 font-medium">
           <span className="text-[13px]"></span>
+          <canvas
+            id="menu-bot"
+            width={22}
+            height={22}
+            className="size-[22px] shrink-0"
+            aria-hidden
+          />
           <span>Finder</span>
           <span className="hidden opacity-70 sm:inline">File</span>
           <span className="hidden opacity-70 sm:inline">Edit</span>

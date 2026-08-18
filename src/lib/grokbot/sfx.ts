@@ -1,6 +1,18 @@
 export type SfxName = "blink" | "land" | "dock";
 
+const MUTE_KEY = "grok-sfx-muted";
+
 let ctx: AudioContext | null = null;
+let muted = readMuted();
+const listeners = new Set<(on: boolean) => void>();
+
+function readMuted() {
+  try {
+    return localStorage.getItem(MUTE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 function audio() {
   if (typeof window === "undefined") return null;
@@ -35,7 +47,29 @@ function beep(
   o.stop(t + dur + 0.02);
 }
 
+export function isMuted() {
+  return muted;
+}
+
+export function setMuted(on: boolean) {
+  muted = on;
+  try {
+    localStorage.setItem(MUTE_KEY, on ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+  listeners.forEach((fn) => fn(on));
+}
+
+export function onMute(fn: (on: boolean) => void) {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
+}
+
 export function playSfx(name: SfxName) {
+  if (muted) return;
   const ac = audio();
   if (!ac) return;
   if (name === "blink") beep(ac, 880, 0.045, 0.035, "sine", 40);

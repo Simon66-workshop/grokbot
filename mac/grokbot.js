@@ -603,18 +603,22 @@
         blink: true,
         autoLook: false,
         autoBounce: 0,
-        followPointer: false
+        followPointer: false,
+        sfx: false,
+        sleepAfter: 0
       }
     },
     companion: {
       label: "Play",
-      hint: "Looks at you. Sometimes hops.",
+      hint: "Looks at you. Sometimes hops. Naps if left alone.",
       idle: {
         breathe: 0.016,
         blink: true,
         autoLook: true,
         autoBounce: 0.16,
-        followPointer: true
+        followPointer: true,
+        sfx: true,
+        sleepAfter: 90
       }
     },
     demo: {
@@ -625,7 +629,9 @@
         blink: true,
         autoLook: false,
         autoBounce: 0,
-        followPointer: false
+        followPointer: false,
+        sfx: true,
+        sleepAfter: 0
       }
     }
   };
@@ -643,6 +649,9 @@
       localStorage.setItem(SCENE_KEY, id);
     } catch {
     }
+  }
+  function isSceneId(v) {
+    return v === "work" || v === "companion" || v === "demo";
   }
 
   // src/lib/grokbot/engine.ts
@@ -749,6 +758,7 @@
     followPointer = true;
     autoIdle = true;
     reducedMotion = false;
+    paused = false;
     left;
     right;
     body;
@@ -784,6 +794,7 @@
     lastAir = false;
     scene = "companion";
     listeners = /* @__PURE__ */ new Map();
+    touchedAt = 0;
     constructor() {
       const rest = getExpression(0);
       this.left = eyeSpring(rest.left);
@@ -865,6 +876,7 @@
       const policy = SCENES[id].idle;
       this.setFollowPointer(policy.followPointer);
       this.setAutoIdle(true);
+      this.noteInput();
       if (id === "demo") {
         this.playDemo();
         return;
@@ -922,12 +934,25 @@
     pointerLeave() {
       this.pointer.active = false;
     }
-    blink() {
+    blink(opts) {
       this.tgt.blink = 0.08;
       this.tgt.bodyScale = 0.965;
       this.stateUntil = this.elapsed + 0.11;
       if (this.state === "idle") this.state = "blink";
-      this.emit("blink");
+      if (!opts?.silent) this.emit("blink");
+    }
+    noteInput() {
+      this.touchedAt = this.elapsed;
+      if (this.state === "sleep") this.wake();
+    }
+    wake() {
+      if (this.state !== "sleep") return;
+      this.goIdle();
+      this.expression = 0;
+    }
+    setPaused(on) {
+      this.paused = on;
+      if (on) this.last = 0;
     }
     reset() {
       this.stopDemo();
@@ -1157,6 +1182,10 @@
       }
     }
     tick(now) {
+      if (this.paused) {
+        this.last = 0;
+        return;
+      }
       if (!this.last) this.last = now;
       let dt = (now - this.last) / 1e3;
       this.last = now;
@@ -1237,6 +1266,9 @@
       if (this.autoIdle && this.state === "idle" && !this.demoPlaying && !this.reducedMotion) {
         this.tgt.bodyScale = 1 + Math.sin(this.elapsed * 1.05) * policy.breathe;
       }
+      if (this.state === "sleep" && !this.reducedMotion) {
+        this.tgt.bodyScale = 1 + Math.sin(this.elapsed * 0.7) * 0.012;
+      }
       if (this.state === "blink" && this.elapsed > this.stateUntil) {
         this.tgt.blink = 1;
         this.tgt.bodyScale = 1;
@@ -1262,7 +1294,7 @@
       }
       if (this.autoIdle && this.state === "idle" && !this.demoPlaying && this.elapsed > this.nextBlink) {
         if (this.reducedMotion) {
-          if (policy.blink) this.blink();
+          if (policy.blink) this.blink({ silent: true });
           else this.nextBlink = this.elapsed + 4;
           return;
         }
@@ -1275,11 +1307,14 @@
           this.play("look");
           this.stateUntil = this.elapsed + 1.1;
         } else if (policy.blink) {
-          this.blink();
+          this.blink({ silent: true });
           if (roll < 0.5) this.nextBlink = this.elapsed + 0.42;
         } else {
           this.nextBlink = this.elapsed + 3 + Math.random() * 4;
         }
+      }
+      if (policy.sleepAfter > 0 && this.autoIdle && this.state === "idle" && !this.demoPlaying && !this.reducedMotion && this.elapsed - this.touchedAt > policy.sleepAfter) {
+        this.play("sleep");
       }
       if (this.state !== "idle" && this.state !== "sleep" && this.state !== "blink") {
         if (this.stateUntil && this.elapsed > this.stateUntil && !this.demoPlaying) {
@@ -1330,6 +1365,13 @@
       this.lastAir = air;
     }
     tickGaze() {
+      if (this.state === "sleep") {
+        this.tgt.gazeX = 0;
+        this.tgt.gazeY = 0.12;
+        this.tgt.yaw = 0;
+        this.tgt.pitch = 0.1;
+        return;
+      }
       const policy = SCENES[this.scene].idle;
       if (this.followPointer && this.pointer.active && !this.demoPlaying) {
         this.tgt.gazeX = this.pointer.x;
@@ -1878,7 +1920,17 @@
   }
 
   // src/lib/grokbot/sfx.ts
+  var MUTE_KEY = "grok-sfx-muted";
   var ctx = null;
+  var muted = readMuted();
+  var listeners = /* @__PURE__ */ new Set();
+  function readMuted() {
+    try {
+      return localStorage.getItem(MUTE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  }
   function audio() {
     if (typeof window === "undefined") return null;
     if (!ctx) {
@@ -1903,7 +1955,25 @@
     o.start(t);
     o.stop(t + dur + 0.02);
   }
+  function isMuted() {
+    return muted;
+  }
+  function setMuted(on) {
+    muted = on;
+    try {
+      localStorage.setItem(MUTE_KEY, on ? "1" : "0");
+    } catch {
+    }
+    listeners.forEach((fn) => fn(on));
+  }
+  function onMute(fn) {
+    listeners.add(fn);
+    return () => {
+      listeners.delete(fn);
+    };
+  }
   function playSfx(name) {
+    if (muted) return;
     const ac = audio();
     if (!ac) return;
     if (name === "blink") beep(ac, 880, 0.045, 0.035, "sine", 40);
@@ -2018,7 +2088,8 @@
         const p = press;
         press = null;
         holding = false;
-        if (!p || p.armed || p.moved) return p?.moved ? "drag" : "none";
+        if (!p) return "none";
+        if (p.moved) return "drag";
         const now = performance.now();
         if (now - tapAt < DBL_MS) {
           window.clearTimeout(tapTimer);
@@ -2127,6 +2198,9 @@
   flex: none;
 }
 .grok-stage .bar button:hover { background: rgba(255,255,255,0.12); }
+.grok-stage .presets button.on {
+  box-shadow: 0 0 0 2px #fffcf6;
+}
 .grok-stage .bar button.on { background: rgba(255,255,255,0.2); }
 .grok-stage .studio {
   border-radius: 999px;
@@ -2194,6 +2268,7 @@
         <div class="presets" id="presets"></div>
         <div class="bar" id="scenes"></div>
         <div class="bar" id="actions"></div>
+        <div class="bar" id="prefs"></div>
         <a class="studio" id="studio" hidden>Studio</a>
       </div>`
       );
@@ -2218,11 +2293,17 @@
     const presets = stage.querySelector("#presets");
     const sceneBar = stage.querySelector("#scenes");
     const actionBar = stage.querySelector("#actions");
+    const prefBar = stage.querySelector("#prefs");
     const studio = stage.querySelector("#studio");
+    const menuBot = document.querySelector("#menu-bot");
     const gesture = createPetGesture();
     let dockOpen = false;
     let raf = 0;
     let disposed = false;
+    let loopOn = false;
+    const faceCtx = canvas.getContext("2d");
+    const wheelCtx = wheel.getContext("2d");
+    const menuCtx = menuBot?.getContext("2d") ?? null;
     const setThrough = (on) => window.pet?.setClickThrough?.(on);
     if (pet) setThrough(true);
     function paintScene() {
@@ -2230,24 +2311,52 @@
         btn.classList.toggle("on", btn.dataset.scene === engine.scene);
       });
     }
+    function paintPresets() {
+      presets.querySelectorAll("button").forEach((btn) => {
+        btn.classList.toggle("on", btn.dataset.hex === faceHex);
+      });
+    }
+    function paintMute() {
+      const btn = prefBar?.querySelector("[data-pref=mute]");
+      if (btn) btn.textContent = isMuted() ? "Muted" : "Sound";
+      btn?.classList.toggle("on", !isMuted());
+    }
+    function sceneSfx() {
+      return SCENES[engine.scene].idle.sfx;
+    }
     function applyScene(id) {
       engine.setScene(id);
       paintScene();
+      window.pet?.setScene?.(id);
     }
     function showDock(open) {
       dockOpen = open;
       stage.classList.toggle("open", open);
       if (open) {
         setThrough(false);
-        playSfx("dock");
+        if (sceneSfx()) playSfx("dock");
       } else if (!gesture.holding) setThrough(true);
     }
-    const offBlink = engine.on("blink", () => playSfx("blink"));
-    const offLand = engine.on("land", () => playSfx("land"));
+    const offBlink = engine.on("blink", () => {
+      if (sceneSfx()) playSfx("blink");
+    });
+    const offLand = engine.on("land", () => {
+      if (sceneSfx()) playSfx("land");
+    });
+    const offMute = onMute((on) => {
+      paintMute();
+      window.pet?.setMuted?.(on);
+    });
     const offSide = window.pet?.onSide?.((s) => {
       stage.dataset.side = s;
     });
-    const offScene = window.pet?.onScene?.((s) => applyScene(s));
+    const offScene = window.pet?.onScene?.((s) => {
+      if (isSceneId(s)) applyScene(s);
+    });
+    const offVisible = window.pet?.onVisible?.((v) => setPaused(!v));
+    const offTrayMute = window.pet?.onMute?.((on) => {
+      if (on !== isMuted()) setMuted(on);
+    });
     if (pet) {
       wrap.addEventListener("pointerenter", onFaceEnter);
       wrap.addEventListener("pointerleave", onFaceLeave);
@@ -2261,40 +2370,71 @@
       if (!gesture.holding && !dockOpen) setThrough(true);
     }
     function sizeCanvas() {
-      const css = canvas.clientWidth || BOT_SIZES.companion.box;
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const px = Math.round(css * dpr);
-      if (canvas.width !== px) {
-        canvas.width = px;
-        canvas.height = px;
-      }
+      const fit = (el, fallback) => {
+        const css = el.clientWidth || fallback;
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const px = Math.round(css * dpr);
+        if (el.width !== px) {
+          el.width = px;
+          el.height = px;
+        }
+      };
+      fit(canvas, BOT_SIZES.companion.box);
+      if (menuBot) fit(menuBot, BOT_SIZES.menubar.box);
     }
     function paintWheel() {
-      const ctx2 = wheel.getContext("2d");
-      if (ctx2) drawColorWheel(ctx2, 108, hexToHsv(resolveFaceHex(faceHex)));
+      if (wheelCtx) drawColorWheel(wheelCtx, 108, hexToHsv(resolveFaceHex(faceHex)));
     }
     function setColor(hex) {
       faceHex = hex;
       engine.setFaceColor(hex);
       paintWheel();
+      paintPresets();
       writeFaceColor(hex);
     }
-    const tick = (now) => {
-      if (disposed) return;
-      engine.tick(now);
-      const ctx2 = canvas.getContext("2d");
-      if (ctx2) {
-        drawGrokBot(ctx2, engine, canvas.width || 480, THEME, {
-          faceScale: BOT_SIZES.companion.faceScale
-        });
-      }
+    function setPaused(on) {
+      engine.setPaused(on);
+      if (!on && !disposed) startLoop();
+    }
+    function startLoop() {
+      if (loopOn || disposed) return;
+      loopOn = true;
+      const tick = (now) => {
+        if (disposed || engine.paused) {
+          loopOn = false;
+          raf = 0;
+          return;
+        }
+        engine.tick(now);
+        if (faceCtx) {
+          drawGrokBot(faceCtx, engine, canvas.width || 480, THEME, {
+            faceScale: BOT_SIZES.companion.faceScale
+          });
+        }
+        if (menuCtx && menuBot) {
+          drawGrokBot(menuCtx, engine, menuBot.width || 22, THEME, {
+            faceScale: BOT_SIZES.menubar.faceScale
+          });
+        }
+        raf = requestAnimationFrame(tick);
+      };
       raf = requestAnimationFrame(tick);
-    };
+    }
     const ro = new ResizeObserver(sizeCanvas);
     ro.observe(wrap);
+    if (menuBot) ro.observe(menuBot);
     sizeCanvas();
     paintWheel();
-    raf = requestAnimationFrame(tick);
+    startLoop();
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const onMotion = () => {
+      engine.reducedMotion = motion.matches;
+    };
+    onMotion();
+    motion.addEventListener("change", onMotion);
+    const onVis = () => setPaused(document.hidden);
+    document.addEventListener("visibilitychange", onVis);
+    if (document.hidden) setPaused(true);
     function lookAt(clientX, clientY) {
       const g = gazeFromRect(clientX, clientY, canvas.getBoundingClientRect());
       engine.pointerMove(g.x, g.y);
@@ -2310,6 +2450,7 @@
     const onKey = (e2) => {
       const tag = e2.target?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
+      engine.noteInput();
       if (e2.code === "Space") {
         e2.preventDefault();
         engine.blink();
@@ -2317,6 +2458,7 @@
       else if (e2.key === "r" || e2.key === "R") engine.reset();
       else if (e2.key === "1") applyScene("work");
       else if (e2.key === "2") applyScene("companion");
+      else if (e2.key === "m" || e2.key === "M") setMuted(!isMuted());
     };
     window.addEventListener("keydown", onKey);
     sceneBar.replaceChildren();
@@ -2337,6 +2479,7 @@
       b.dataset.act = act.id;
       b.textContent = act.label;
       b.addEventListener("click", () => {
+        engine.noteInput();
         act.run(engine);
         paintScene();
       });
@@ -2347,10 +2490,24 @@
       const b = document.createElement("button");
       b.type = "button";
       b.title = p.name;
+      b.dataset.hex = p.hex;
       b.style.background = p.hex;
       b.addEventListener("click", () => setColor(p.hex));
       presets.appendChild(b);
     });
+    paintPresets();
+    if (prefBar) {
+      prefBar.replaceChildren();
+      const muteBtn = document.createElement("button");
+      muteBtn.type = "button";
+      muteBtn.dataset.pref = "mute";
+      muteBtn.title = "Toggle sounds";
+      muteBtn.addEventListener("click", () => setMuted(!isMuted()));
+      prefBar.appendChild(muteBtn);
+      paintMute();
+    }
+    window.pet?.setScene?.(engine.scene);
+    window.pet?.setMuted?.(isMuted());
     if (studio && opts.studioHref) {
       studio.hidden = false;
       studio.href = opts.studioHref;
@@ -2459,7 +2616,10 @@
       showDock(false);
     };
     if (web) window.addEventListener("pointerdown", onBg);
+    let waking = false;
     const onDown = (e2) => {
+      waking = engine.state === "sleep";
+      engine.noteInput();
       vel = { x: 0, y: 0 };
       dragging = false;
       last = { x: e2.screenX, y: e2.screenY, t: performance.now() };
@@ -2492,14 +2652,20 @@
       const kind = gesture.onUp();
       if (kind === "dbl") {
         gesture.cancelTap();
+        engine.noteInput();
         engine.bounceOnce();
         vel = { x: 0, y: 0 };
       } else if (kind === "tap") {
-        gesture.scheduleTap(() => {
+        if (waking) {
           engine.blink();
-          showDock(!dockOpen);
-        });
-        vel = { x: 0, y: 0 };
+          vel = { x: 0, y: 0 };
+        } else {
+          gesture.scheduleTap(() => {
+            engine.blink();
+            showDock(!dockOpen);
+          });
+          vel = { x: 0, y: 0 };
+        }
       } else if (kind === "drag" && web) {
         vel.x = Math.max(-38, Math.min(38, vel.x));
         vel.y = Math.max(-38, Math.min(38, vel.y));
@@ -2512,6 +2678,11 @@
     wrap.addEventListener("pointermove", onMove);
     wrap.addEventListener("pointerup", onUp);
     wrap.addEventListener("pointercancel", onUp);
+    const onMenu = (e2) => {
+      e2.preventDefault();
+      if (pet) window.pet?.hide?.();
+    };
+    wrap.addEventListener("contextmenu", onMenu);
     return () => {
       disposed = true;
       cancelAnimationFrame(raf);
@@ -2519,16 +2690,20 @@
       ro.disconnect();
       offBlink();
       offLand();
+      offMute();
       gesture.dispose();
       registerEngine(null);
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("pointermove", onPointerGaze);
       window.removeEventListener("resize", onResize);
       window.removeEventListener("pointerdown", onBg);
+      document.removeEventListener("visibilitychange", onVis);
+      motion.removeEventListener("change", onMotion);
       wrap.removeEventListener("pointerdown", onDown);
       wrap.removeEventListener("pointermove", onMove);
       wrap.removeEventListener("pointerup", onUp);
       wrap.removeEventListener("pointercancel", onUp);
+      wrap.removeEventListener("contextmenu", onMenu);
       wrap.removeEventListener("pointerenter", onFaceEnter);
       wrap.removeEventListener("pointerleave", onFaceLeave);
       dock.removeEventListener("pointerenter", onFaceEnter);
@@ -2538,6 +2713,8 @@
       if (typeof offCursor === "function") offCursor();
       if (typeof offSide === "function") offSide();
       if (typeof offScene === "function") offScene();
+      if (typeof offVisible === "function") offVisible();
+      if (typeof offTrayMute === "function") offTrayMute();
     };
   }
 

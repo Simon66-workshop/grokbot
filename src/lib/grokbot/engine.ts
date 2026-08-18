@@ -191,6 +191,7 @@ export class GrokBotEngine {
   followPointer = true;
   autoIdle = true;
   reducedMotion = false;
+  paused = false;
 
   readonly left: EyeSpring;
   readonly right: EyeSpring;
@@ -232,6 +233,7 @@ export class GrokBotEngine {
   private lastAir = false;
   scene: SceneId = "companion";
   private listeners = new Map<string, Set<() => void>>();
+  private touchedAt = 0;
 
   constructor() {
     const rest = getExpression(0);
@@ -319,6 +321,7 @@ export class GrokBotEngine {
     const policy = SCENES[id].idle;
     this.setFollowPointer(policy.followPointer);
     this.setAutoIdle(true);
+    this.noteInput();
     if (id === "demo") {
       this.playDemo();
       return;
@@ -391,12 +394,28 @@ export class GrokBotEngine {
     this.pointer.active = false;
   }
 
-  blink() {
+  blink(opts?: { silent?: boolean }) {
     this.tgt.blink = 0.08;
     this.tgt.bodyScale = 0.965;
     this.stateUntil = this.elapsed + 0.11;
     if (this.state === "idle") this.state = "blink";
-    this.emit("blink");
+    if (!opts?.silent) this.emit("blink");
+  }
+
+  noteInput() {
+    this.touchedAt = this.elapsed;
+    if (this.state === "sleep") this.wake();
+  }
+
+  wake() {
+    if (this.state !== "sleep") return;
+    this.goIdle();
+    this.expression = 0;
+  }
+
+  setPaused(on: boolean) {
+    this.paused = on;
+    if (on) this.last = 0;
   }
 
   reset() {
@@ -636,6 +655,10 @@ export class GrokBotEngine {
   }
 
   tick(now: number) {
+    if (this.paused) {
+      this.last = 0;
+      return;
+    }
     if (!this.last) this.last = now;
     let dt = (now - this.last) / 1000;
     this.last = now;
@@ -730,6 +753,9 @@ export class GrokBotEngine {
     ) {
       this.tgt.bodyScale = 1 + Math.sin(this.elapsed * 1.05) * policy.breathe;
     }
+    if (this.state === "sleep" && !this.reducedMotion) {
+      this.tgt.bodyScale = 1 + Math.sin(this.elapsed * 0.7) * 0.012;
+    }
 
     if (this.state === "blink" && this.elapsed > this.stateUntil) {
       this.tgt.blink = 1;
@@ -765,7 +791,7 @@ export class GrokBotEngine {
       this.elapsed > this.nextBlink
     ) {
       if (this.reducedMotion) {
-        if (policy.blink) this.blink();
+        if (policy.blink) this.blink({ silent: true });
         else this.nextBlink = this.elapsed + 4;
         return;
       }
@@ -778,11 +804,22 @@ export class GrokBotEngine {
         this.play("look");
         this.stateUntil = this.elapsed + 1.1;
       } else if (policy.blink) {
-        this.blink();
+        this.blink({ silent: true });
         if (roll < 0.5) this.nextBlink = this.elapsed + 0.42;
       } else {
         this.nextBlink = this.elapsed + 3 + Math.random() * 4;
       }
+    }
+
+    if (
+      policy.sleepAfter > 0 &&
+      this.autoIdle &&
+      this.state === "idle" &&
+      !this.demoPlaying &&
+      !this.reducedMotion &&
+      this.elapsed - this.touchedAt > policy.sleepAfter
+    ) {
+      this.play("sleep");
     }
 
     if (this.state !== "idle" && this.state !== "sleep" && this.state !== "blink") {
@@ -837,6 +874,13 @@ export class GrokBotEngine {
   }
 
   private tickGaze() {
+    if (this.state === "sleep") {
+      this.tgt.gazeX = 0;
+      this.tgt.gazeY = 0.12;
+      this.tgt.yaw = 0;
+      this.tgt.pitch = 0.1;
+      return;
+    }
     const policy = SCENES[this.scene].idle;
     if (this.followPointer && this.pointer.active && !this.demoPlaying) {
       this.tgt.gazeX = this.pointer.x;

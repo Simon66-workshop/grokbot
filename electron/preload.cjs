@@ -23,7 +23,19 @@ contextBridge.exposeInMainWorld("pet", {
   onScene(fn) {
     return listen("pet-scene", fn);
   },
+  onVisible(fn) {
+    return listen("pet-visible", fn);
+  },
+  onMute(fn) {
+    return listen("pet-mute", fn);
+  },
   setScene(scene) {
     ipcRenderer.send("pet-set-scene", scene);
+  },
+  setMuted(muted) {
+    ipcRenderer.send("pet-set-mute", muted);
+  },
+  hide() {
+    ipcRenderer.send("pet-hide");
   },
 });

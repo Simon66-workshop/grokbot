@@ -9,8 +9,8 @@ import {
   resolveFaceHex,
 } from "./color";
 import { drawGrokBot, type ThemeColors } from "./renderer";
-import { readScene, SCENES, type SceneId } from "./scenes";
-import { playSfx } from "./sfx";
+import { readScene, SCENES, isSceneId, type SceneId } from "./scenes";
+import { isMuted, onMute, playSfx, setMuted } from "./sfx";
 import { BOT_SIZES } from "./sizes";
 import { registerEngine } from "./registry";
 
@@ -129,7 +129,8 @@ export function createPetGesture() {
       const p = press;
       press = null;
       holding = false;
-      if (!p || p.armed || p.moved) return p?.moved ? "drag" : "none";
+      if (!p) return "none";
+      if (p.moved) return "drag";
       const now = performance.now();
       if (now - tapAt < DBL_MS) {
         window.clearTimeout(tapTimer);
@@ -242,6 +243,9 @@ const PET_CSS = `
   flex: none;
 }
 .grok-stage .bar button:hover { background: rgba(255,255,255,0.12); }
+.grok-stage .presets button.on {
+  box-shadow: 0 0 0 2px #fffcf6;
+}
 .grok-stage .bar button.on { background: rgba(255,255,255,0.2); }
 .grok-stage .studio {
   border-radius: 999px;
@@ -315,6 +319,7 @@ function ensureStage(root: HTMLElement) {
         <div class="presets" id="presets"></div>
         <div class="bar" id="scenes"></div>
         <div class="bar" id="actions"></div>
+        <div class="bar" id="prefs"></div>
         <a class="studio" id="studio" hidden>Studio</a>
       </div>`,
     );
@@ -349,12 +354,18 @@ export function bootMacCompanion(opts: BootOptions = {}) {
   const presets = stage.querySelector<HTMLDivElement>("#presets")!;
   const sceneBar = stage.querySelector<HTMLDivElement>("#scenes")!;
   const actionBar = stage.querySelector<HTMLDivElement>("#actions")!;
+  const prefBar = stage.querySelector<HTMLDivElement>("#prefs");
   const studio = stage.querySelector<HTMLAnchorElement>("#studio");
+  const menuBot = document.querySelector<HTMLCanvasElement>("#menu-bot");
 
   const gesture = createPetGesture();
   let dockOpen = false;
   let raf = 0;
   let disposed = false;
+  let loopOn = false;
+  const faceCtx = canvas.getContext("2d");
+  const wheelCtx = wheel.getContext("2d");
+  const menuCtx = menuBot?.getContext("2d") ?? null;
 
   const setThrough = (on: boolean) => window.pet?.setClickThrough?.(on);
   if (pet) setThrough(true);
@@ -365,9 +376,26 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     });
   }
 
+  function paintPresets() {
+    presets.querySelectorAll<HTMLButtonElement>("button").forEach((btn) => {
+      btn.classList.toggle("on", btn.dataset.hex === faceHex);
+    });
+  }
+
+  function paintMute() {
+    const btn = prefBar?.querySelector<HTMLButtonElement>("[data-pref=mute]");
+    if (btn) btn.textContent = isMuted() ? "Muted" : "Sound";
+    btn?.classList.toggle("on", !isMuted());
+  }
+
+  function sceneSfx() {
+    return SCENES[engine.scene].idle.sfx;
+  }
+
   function applyScene(id: SceneId) {
     engine.setScene(id);
     paintScene();
+    window.pet?.setScene?.(id);
   }
 
   function showDock(open: boolean) {
@@ -375,17 +403,31 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     stage.classList.toggle("open", open);
     if (open) {
       setThrough(false);
-      playSfx("dock");
+      if (sceneSfx()) playSfx("dock");
     } else if (!gesture.holding) setThrough(true);
   }
 
-  const offBlink = engine.on("blink", () => playSfx("blink"));
-  const offLand = engine.on("land", () => playSfx("land"));
+  const offBlink = engine.on("blink", () => {
+    if (sceneSfx()) playSfx("blink");
+  });
+  const offLand = engine.on("land", () => {
+    if (sceneSfx()) playSfx("land");
+  });
+  const offMute = onMute((on) => {
+    paintMute();
+    window.pet?.setMuted?.(on);
+  });
 
   const offSide = window.pet?.onSide?.((s) => {
     stage.dataset.side = s;
   });
-  const offScene = window.pet?.onScene?.((s) => applyScene(s as SceneId));
+  const offScene = window.pet?.onScene?.((s) => {
+    if (isSceneId(s)) applyScene(s);
+  });
+  const offVisible = window.pet?.onVisible?.((v) => setPaused(!v));
+  const offTrayMute = window.pet?.onMute?.((on) => {
+    if (on !== isMuted()) setMuted(on);
+  });
 
   if (pet) {
     wrap.addEventListener("pointerenter", onFaceEnter);
@@ -402,44 +444,78 @@ export function bootMacCompanion(opts: BootOptions = {}) {
   }
 
   function sizeCanvas() {
-    const css = canvas.clientWidth || BOT_SIZES.companion.box;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const px = Math.round(css * dpr);
-    if (canvas.width !== px) {
-      canvas.width = px;
-      canvas.height = px;
-    }
+    const fit = (el: HTMLCanvasElement, fallback: number) => {
+      const css = el.clientWidth || fallback;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const px = Math.round(css * dpr);
+      if (el.width !== px) {
+        el.width = px;
+        el.height = px;
+      }
+    };
+    fit(canvas, BOT_SIZES.companion.box);
+    if (menuBot) fit(menuBot, BOT_SIZES.menubar.box);
   }
 
   function paintWheel() {
-    const ctx = wheel.getContext("2d");
-    if (ctx) drawColorWheel(ctx, 108, hexToHsv(resolveFaceHex(faceHex)));
+    if (wheelCtx) drawColorWheel(wheelCtx, 108, hexToHsv(resolveFaceHex(faceHex)));
   }
 
   function setColor(hex: string) {
     faceHex = hex;
     engine.setFaceColor(hex);
     paintWheel();
+    paintPresets();
     writeFaceColor(hex);
   }
 
-  const tick = (now: number) => {
-    if (disposed) return;
-    engine.tick(now);
-    const ctx = canvas.getContext("2d");
-    if (ctx) {
-      drawGrokBot(ctx, engine, canvas.width || 480, THEME, {
-        faceScale: BOT_SIZES.companion.faceScale,
-      });
-    }
+  function setPaused(on: boolean) {
+    engine.setPaused(on);
+    if (!on && !disposed) startLoop();
+  }
+
+  function startLoop() {
+    if (loopOn || disposed) return;
+    loopOn = true;
+    const tick = (now: number) => {
+      if (disposed || engine.paused) {
+        loopOn = false;
+        raf = 0;
+        return;
+      }
+      engine.tick(now);
+      if (faceCtx) {
+        drawGrokBot(faceCtx, engine, canvas.width || 480, THEME, {
+          faceScale: BOT_SIZES.companion.faceScale,
+        });
+      }
+      if (menuCtx && menuBot) {
+        drawGrokBot(menuCtx, engine, menuBot.width || 22, THEME, {
+          faceScale: BOT_SIZES.menubar.faceScale,
+        });
+      }
+      raf = requestAnimationFrame(tick);
+    };
     raf = requestAnimationFrame(tick);
-  };
+  }
 
   const ro = new ResizeObserver(sizeCanvas);
   ro.observe(wrap);
+  if (menuBot) ro.observe(menuBot);
   sizeCanvas();
   paintWheel();
-  raf = requestAnimationFrame(tick);
+  startLoop();
+
+  const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const onMotion = () => {
+    engine.reducedMotion = motion.matches;
+  };
+  onMotion();
+  motion.addEventListener("change", onMotion);
+
+  const onVis = () => setPaused(document.hidden);
+  document.addEventListener("visibilitychange", onVis);
+  if (document.hidden) setPaused(true);
 
   function lookAt(clientX: number, clientY: number) {
     const g = gazeFromRect(clientX, clientY, canvas.getBoundingClientRect());
@@ -458,6 +534,7 @@ export function bootMacCompanion(opts: BootOptions = {}) {
   const onKey = (e: KeyboardEvent) => {
     const tag = (e.target as HTMLElement | null)?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA") return;
+    engine.noteInput();
     if (e.code === "Space") {
       e.preventDefault();
       engine.blink();
@@ -465,6 +542,7 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     else if (e.key === "r" || e.key === "R") engine.reset();
     else if (e.key === "1") applyScene("work");
     else if (e.key === "2") applyScene("companion");
+    else if (e.key === "m" || e.key === "M") setMuted(!isMuted());
   };
   window.addEventListener("keydown", onKey);
 
@@ -487,6 +565,7 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     b.dataset.act = act.id;
     b.textContent = act.label;
     b.addEventListener("click", () => {
+      engine.noteInput();
       act.run(engine);
       paintScene();
     });
@@ -498,10 +577,26 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     const b = document.createElement("button");
     b.type = "button";
     b.title = p.name;
+    b.dataset.hex = p.hex;
     b.style.background = p.hex;
     b.addEventListener("click", () => setColor(p.hex));
     presets.appendChild(b);
   });
+  paintPresets();
+
+  if (prefBar) {
+    prefBar.replaceChildren();
+    const muteBtn = document.createElement("button");
+    muteBtn.type = "button";
+    muteBtn.dataset.pref = "mute";
+    muteBtn.title = "Toggle sounds";
+    muteBtn.addEventListener("click", () => setMuted(!isMuted()));
+    prefBar.appendChild(muteBtn);
+    paintMute();
+  }
+
+  window.pet?.setScene?.(engine.scene);
+  window.pet?.setMuted?.(isMuted());
 
   if (studio && opts.studioHref) {
     studio.hidden = false;
@@ -626,7 +721,11 @@ export function bootMacCompanion(opts: BootOptions = {}) {
   };
   if (web) window.addEventListener("pointerdown", onBg);
 
+  let waking = false;
+
   const onDown = (e: PointerEvent) => {
+    waking = engine.state === "sleep";
+    engine.noteInput();
     vel = { x: 0, y: 0 };
     dragging = false;
     last = { x: e.screenX, y: e.screenY, t: performance.now() };
@@ -659,14 +758,20 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     const kind = gesture.onUp();
     if (kind === "dbl") {
       gesture.cancelTap();
+      engine.noteInput();
       engine.bounceOnce();
       vel = { x: 0, y: 0 };
     } else if (kind === "tap") {
-      gesture.scheduleTap(() => {
+      if (waking) {
         engine.blink();
-        showDock(!dockOpen);
-      });
-      vel = { x: 0, y: 0 };
+        vel = { x: 0, y: 0 };
+      } else {
+        gesture.scheduleTap(() => {
+          engine.blink();
+          showDock(!dockOpen);
+        });
+        vel = { x: 0, y: 0 };
+      }
     } else if (kind === "drag" && web) {
       vel.x = Math.max(-38, Math.min(38, vel.x));
       vel.y = Math.max(-38, Math.min(38, vel.y));
@@ -680,6 +785,11 @@ export function bootMacCompanion(opts: BootOptions = {}) {
   wrap.addEventListener("pointermove", onMove);
   wrap.addEventListener("pointerup", onUp);
   wrap.addEventListener("pointercancel", onUp);
+  const onMenu = (e: Event) => {
+    e.preventDefault();
+    if (pet) window.pet?.hide?.();
+  };
+  wrap.addEventListener("contextmenu", onMenu);
 
   return () => {
     disposed = true;
@@ -688,16 +798,20 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     ro.disconnect();
     offBlink();
     offLand();
+    offMute();
     gesture.dispose();
     registerEngine(null);
     window.removeEventListener("keydown", onKey);
     window.removeEventListener("pointermove", onPointerGaze);
     window.removeEventListener("resize", onResize);
     window.removeEventListener("pointerdown", onBg);
+    document.removeEventListener("visibilitychange", onVis);
+    motion.removeEventListener("change", onMotion);
     wrap.removeEventListener("pointerdown", onDown);
     wrap.removeEventListener("pointermove", onMove);
     wrap.removeEventListener("pointerup", onUp);
     wrap.removeEventListener("pointercancel", onUp);
+    wrap.removeEventListener("contextmenu", onMenu);
     wrap.removeEventListener("pointerenter", onFaceEnter);
     wrap.removeEventListener("pointerleave", onFaceLeave);
     dock.removeEventListener("pointerenter", onFaceEnter);
@@ -707,5 +821,7 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     if (typeof offCursor === "function") offCursor();
     if (typeof offSide === "function") offSide();
     if (typeof offScene === "function") offScene();
+    if (typeof offVisible === "function") offVisible();
+    if (typeof offTrayMute === "function") offTrayMute();
   };
 }

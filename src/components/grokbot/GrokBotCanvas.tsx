@@ -46,6 +46,7 @@ export function GrokBotCanvas({
       "(prefers-reduced-motion: reduce)",
     ).matches;
     engineRef.current = engine;
+    const ctx = canvas.getContext("2d");
     themeRef.current = readTheme();
     registerEngine(engine);
 
@@ -62,6 +63,7 @@ export function GrokBotCanvas({
     engine.setDebug(store.debug);
     engine.setRotation((store.yawDeg * Math.PI) / 180, 0);
     if (followGlobal) engine.setScene(store.scene);
+    else engine.scene = "work";
     const offBlink = engine.on("blink", () => playSfx("blink"));
     const offLand = engine.on("land", () => playSfx("land"));
 
@@ -89,7 +91,6 @@ export function GrokBotCanvas({
     let lastPush = 0;
     const tick = (now: number) => {
       engine.tick(now);
-      const ctx = canvas.getContext("2d");
       const theme = themeRef.current ?? readTheme();
       if (ctx) {
         drawGrokBot(ctx, engine, canvas.width || 480, theme, {
@@ -115,6 +116,9 @@ export function GrokBotCanvas({
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
+
+    const onVis = () => engine.setPaused(document.hidden);
+    document.addEventListener("visibilitychange", onVis);
 
     const ro = new ResizeObserver(() => sizeCanvas(canvas));
     ro.observe(wrap);
@@ -158,6 +162,7 @@ export function GrokBotCanvas({
       offBlink();
       offLand();
       window.removeEventListener("keydown", onKey);
+      document.removeEventListener("visibilitychange", onVis);
       registerEngine(null);
       engineRef.current = null;
     };

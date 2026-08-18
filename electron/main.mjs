@@ -21,6 +21,8 @@ let tray = null;
 let side = "bottom";
 let cursorTimer = null;
 let visible = true;
+let scene = "companion";
+let muted = false;
 
 function loadPos() {
   try {
@@ -90,6 +92,12 @@ function iconImage() {
   return nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`);
 }
 
+function sendScene(next) {
+  scene = next;
+  win?.webContents.send("pet-scene", scene);
+  applyTrayMenu();
+}
+
 function applyTrayMenu() {
   const login = app.getLoginItemSettings().openAtLogin;
   const menu = Menu.buildFromTemplate([
@@ -98,10 +106,35 @@ function applyTrayMenu() {
       click: () => toggleVisible(),
     },
     { type: "separator" },
-    { label: "Work", click: () => win?.webContents.send("pet-scene", "work") },
-    { label: "Play", click: () => win?.webContents.send("pet-scene", "companion") },
-    { label: "Demo", click: () => win?.webContents.send("pet-scene", "demo") },
+    {
+      label: "Work",
+      type: "radio",
+      checked: scene === "work",
+      click: () => sendScene("work"),
+    },
+    {
+      label: "Play",
+      type: "radio",
+      checked: scene === "companion",
+      click: () => sendScene("companion"),
+    },
+    {
+      label: "Demo",
+      type: "radio",
+      checked: scene === "demo",
+      click: () => sendScene("demo"),
+    },
     { type: "separator" },
+    {
+      label: "Sound",
+      type: "checkbox",
+      checked: !muted,
+      click: (item) => {
+        muted = !item.checked;
+        win?.webContents.send("pet-mute", muted);
+        applyTrayMenu();
+      },
+    },
     {
       label: "Open at Login",
       type: "checkbox",
@@ -130,19 +163,44 @@ function applyTrayMenu() {
   tray.setContextMenu(menu);
 }
 
-function toggleVisible() {
+function startCursor() {
+  if (cursorTimer) return;
+  cursorTimer = setInterval(() => {
+    if (!win || win.isDestroyed() || !visible) return;
+    const p = screen.getCursorScreenPoint();
+    const b = ballScreen();
+    const nx = Math.max(-1, Math.min(1, (p.x - b.x) / 260));
+    const ny = Math.max(-1, Math.min(1, (p.y - b.y) / 200));
+    win.webContents.send("pet-cursor", nx, ny);
+  }, 32);
+}
+
+function stopCursor() {
+  if (!cursorTimer) return;
+  clearInterval(cursorTimer);
+  cursorTimer = null;
+}
+
+function setVisible(next) {
   if (!win) return;
-  visible = !visible;
-  if (visible) win.show();
-  else win.hide();
+  visible = next;
+  if (visible) {
+    win.show();
+    startCursor();
+  } else {
+    win.hide();
+    stopCursor();
+  }
+  win.webContents.send("pet-visible", visible);
   applyTrayMenu();
 }
 
+function toggleVisible() {
+  setVisible(!visible);
+}
+
 function cleanup() {
-  if (cursorTimer) {
-    clearInterval(cursorTimer);
-    cursorTimer = null;
-  }
+  stopCursor();
   tray?.destroy();
   tray = null;
 }
@@ -156,12 +214,13 @@ function create() {
   start.y = Math.min(a.y + a.height - 8, Math.max(a.y + 8, start.y));
   side = pickSide(start.x, start.y, a);
   const o = BALL[side];
+  const startHidden = app.getLoginItemSettings().wasOpenedAsHidden;
   win = new BrowserWindow({
     width: STAGE_W,
     height: STAGE_H,
     x: Math.round(start.x - o.x),
     y: Math.round(start.y - o.y),
-    show: !app.getLoginItemSettings().wasOpenedAsHidden,
+    show: !startHidden,
     frame: false,
     transparent: true,
     hasShadow: false,
@@ -184,7 +243,7 @@ function create() {
       backgroundThrottling: false,
     },
   });
-  if (app.getLoginItemSettings().wasOpenedAsHidden) visible = false;
+  visible = !startHidden;
   win.setAlwaysOnTop(true, "screen-saver");
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   if (process.platform === "darwin") {
@@ -195,20 +254,13 @@ function create() {
   win.loadFile(path.join(here, "../mac/index.html"), { query: { pet: "1" } });
   win.webContents.on("did-finish-load", () => {
     win.webContents.send("pet-side", side);
+    win.webContents.send("pet-visible", visible);
     const b = ballScreen();
     placeWindow(b.x, b.y, side);
   });
   win.on("moved", savePos);
   win.on("close", savePos);
-
-  cursorTimer = setInterval(() => {
-    if (!win || win.isDestroyed()) return;
-    const p = screen.getCursorScreenPoint();
-    const b = ballScreen();
-    const nx = Math.max(-1, Math.min(1, (p.x - b.x) / 260));
-    const ny = Math.max(-1, Math.min(1, (p.y - b.y) / 200));
-    win.webContents.send("pet-cursor", nx, ny);
-  }, 32);
+  if (visible) startCursor();
 
   applyTrayMenu();
   const appMenu = Menu.buildFromTemplate([
@@ -217,7 +269,7 @@ function create() {
       submenu: [
         { role: "about" },
         { type: "separator" },
-        { label: "Hide GrokBot", click: () => toggleVisible() },
+        { label: "Hide GrokBot", click: () => setVisible(false) },
         { type: "separator" },
         { role: "quit", label: "Quit GrokBot" },
       ],
@@ -243,9 +295,18 @@ ipcMain.on("pet-click-through", (event, ignore) => {
   w.setIgnoreMouseEvents(Boolean(ignore), { forward: true });
 });
 
-ipcMain.on("pet-set-scene", (_e, scene) => {
-  win?.webContents.send("pet-scene", scene);
+ipcMain.on("pet-set-scene", (_e, next) => {
+  if (next !== "work" && next !== "companion" && next !== "demo") return;
+  scene = next;
+  applyTrayMenu();
 });
+
+ipcMain.on("pet-set-mute", (_e, on) => {
+  muted = Boolean(on);
+  applyTrayMenu();
+});
+
+ipcMain.on("pet-hide", () => setVisible(false));
 
 if (process.platform !== "darwin") {
   app.commandLine.appendSwitch("enable-transparent-visuals");
@@ -257,10 +318,7 @@ if (!locked) {
 } else {
   app.on("second-instance", () => {
     if (!win) create();
-    else {
-      if (!visible) toggleVisible();
-      else win.show();
-    }
+    else setVisible(true);
   });
   app.whenReady().then(create);
 }
@@ -272,5 +330,5 @@ app.on("window-all-closed", () => {
 app.on("before-quit", cleanup);
 app.on("activate", () => {
   if (!win) create();
-  else if (!visible) toggleVisible();
+  else setVisible(true);
 });
