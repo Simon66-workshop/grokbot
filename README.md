@@ -14,7 +14,7 @@ npm run pet
 
 或者双击 `mac/Open GrokBot.command`。
 
-菜单栏托盘是**活的 22px 脸**。右键托盘：**显示 / 隐藏、场景、S/M/L、声音、Auto Work、开机启动、退出。** 单实例。右键球体可隐藏。
+菜单栏托盘是**活的 22px 脸**。右键托盘：**显示 / 隐藏、场景、S/M/L、静音、Auto Work、开机启动、退出。** 菜单栏 GrokBot 下拉里也可以勾 **Mute**。单实例。右键球体可隐藏。
 
 ### 打成 GrokBot.app
 

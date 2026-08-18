@@ -261,7 +261,44 @@ function sendScene(next) {
   scene = next;
   savePrefs();
   win?.webContents.send("pet-scene", scene);
+  applyMenus();
+}
+
+function setMutedState(on) {
+  muted = Boolean(on);
+  savePrefs();
+  win?.webContents.send("pet-mute", muted);
+  applyMenus();
+}
+
+function applyAppMenu() {
+  const appMenu = Menu.buildFromTemplate([
+    {
+      label: "GrokBot",
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        {
+          label: "Mute",
+          type: "checkbox",
+          checked: muted,
+          click: (item) => setMutedState(item.checked),
+        },
+        {
+          label: visible ? "Hide GrokBot" : "Show GrokBot",
+          click: () => toggleVisible(),
+        },
+        { type: "separator" },
+        { role: "quit", label: "Quit GrokBot" },
+      ],
+    },
+  ]);
+  Menu.setApplicationMenu(appMenu);
+}
+
+function applyMenus() {
   applyTrayMenu();
+  applyAppMenu();
 }
 
 function applyTrayMenu() {
@@ -298,7 +335,7 @@ function applyTrayMenu() {
       click: () => {
         applySize("s");
         win?.webContents.send("pet-size", "s");
-        applyTrayMenu();
+        applyMenus();
       },
     },
     {
@@ -308,7 +345,7 @@ function applyTrayMenu() {
       click: () => {
         applySize("m");
         win?.webContents.send("pet-size", "m");
-        applyTrayMenu();
+        applyMenus();
       },
     },
     {
@@ -318,20 +355,15 @@ function applyTrayMenu() {
       click: () => {
         applySize("l");
         win?.webContents.send("pet-size", "l");
-        applyTrayMenu();
+        applyMenus();
       },
     },
     { type: "separator" },
     {
-      label: "Sound",
+      label: "Mute",
       type: "checkbox",
-      checked: !muted,
-      click: (item) => {
-        muted = !item.checked;
-        savePrefs();
-        win?.webContents.send("pet-mute", muted);
-        applyTrayMenu();
-      },
+      checked: muted,
+      click: (item) => setMutedState(item.checked),
     },
     {
       label: "Auto Work",
@@ -341,7 +373,7 @@ function applyTrayMenu() {
         autoWork = item.checked;
         savePrefs();
         win?.webContents.send("pet-auto-work", autoWork);
-        applyTrayMenu();
+        applyMenus();
       },
     },
     {
@@ -370,6 +402,7 @@ function applyTrayMenu() {
     tray.on("click", () => toggleVisible());
   }
   tray.setContextMenu(menu);
+  applyAppMenu();
 }
 
 function startCursor() {
@@ -596,19 +629,6 @@ function create() {
   applyTrayMenu();
   startFocusWatch();
   wireDisplays();
-  const appMenu = Menu.buildFromTemplate([
-    {
-      label: "GrokBot",
-      submenu: [
-        { role: "about" },
-        { type: "separator" },
-        { label: "Hide GrokBot", click: () => setVisible(false) },
-        { type: "separator" },
-        { role: "quit", label: "Quit GrokBot" },
-      ],
-    },
-  ]);
-  Menu.setApplicationMenu(appMenu);
 }
 
 ipcMain.on("pet-move-by", (event, dx, dy) => {
@@ -641,9 +661,7 @@ ipcMain.on("pet-set-scene", (_e, next) => {
 });
 
 ipcMain.on("pet-set-mute", (_e, on) => {
-  muted = Boolean(on);
-  savePrefs();
-  applyTrayMenu();
+  setMutedState(on);
 });
 
 ipcMain.on("pet-set-size", (_e, id) => {
