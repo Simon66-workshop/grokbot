@@ -1,8 +1,9 @@
 /** Official GrokBot frames. box = CSS pixels of the square canvas. */
 export const BOT_SIZES = {
   menubar: { box: 22, faceScale: 0.46, label: "Menu bar" },
-  pet: { box: 200, faceScale: 0.3, label: "Desktop pet" },
-  companion: { box: 440, faceScale: 0.24, label: "Companion" },
+  pet: { box: 200, faceScale: 0.3, label: "Small" },
+  medium: { box: 320, faceScale: 0.26, label: "Medium" },
+  companion: { box: 440, faceScale: 0.24, label: "Large" },
   hero: { box: 720, faceScale: 0.22, label: "Hero" },
 } as const;
 

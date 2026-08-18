@@ -1988,8 +1988,9 @@
   // src/lib/grokbot/sizes.ts
   var BOT_SIZES = {
     menubar: { box: 22, faceScale: 0.46, label: "Menu bar" },
-    pet: { box: 200, faceScale: 0.3, label: "Desktop pet" },
-    companion: { box: 440, faceScale: 0.24, label: "Companion" },
+    pet: { box: 200, faceScale: 0.3, label: "Small" },
+    medium: { box: 320, faceScale: 0.26, label: "Medium" },
+    companion: { box: 440, faceScale: 0.24, label: "Large" },
     hero: { box: 720, faceScale: 0.22, label: "Hero" }
   };
 
@@ -2000,19 +2001,101 @@
     else stack.pop();
   }
 
+  // src/lib/grokbot/layout.ts
+  var PET_SIZES = {
+    s: { box: 200, faceScale: 0.3, label: "S", hint: "Small \xB7 200" },
+    m: { box: 320, faceScale: 0.26, label: "M", hint: "Medium \xB7 320" },
+    l: { box: 440, faceScale: 0.24, label: "L", hint: "Large \xB7 440" }
+  };
+  var STAGE_W = 580;
+  var DOCK_ROOM = 160;
+  var SIZE_KEY = "grok-pet-size";
+  var AUTO_WORK_KEY = "grok-auto-work";
+  function isPetSize(id) {
+    return id === "s" || id === "m" || id === "l";
+  }
+  function readPetSize() {
+    try {
+      const v = localStorage.getItem(SIZE_KEY);
+      if (isPetSize(v ?? "")) return v;
+    } catch {
+    }
+    return "l";
+  }
+  function writePetSize(id) {
+    try {
+      localStorage.setItem(SIZE_KEY, id);
+    } catch {
+    }
+  }
+  function readAutoWork() {
+    try {
+      const v = localStorage.getItem(AUTO_WORK_KEY);
+      if (v === "0") return false;
+      if (v === "1") return true;
+    } catch {
+    }
+    return true;
+  }
+  function writeAutoWork(on) {
+    try {
+      localStorage.setItem(AUTO_WORK_KEY, on ? "1" : "0");
+    } catch {
+    }
+  }
+  function layoutFor(id) {
+    const size = PET_SIZES[id];
+    const box = size.box;
+    const inset = Math.round((STAGE_W - box) / 2);
+    const h = box + DOCK_ROOM;
+    return {
+      id,
+      w: STAGE_W,
+      h,
+      box,
+      faceScale: size.faceScale,
+      inset,
+      dockMain: box - 40,
+      faceSideTop: Math.round((h - box) / 2),
+      ball: {
+        bottom: { x: STAGE_W / 2, y: box / 2 },
+        top: { x: STAGE_W / 2, y: h - box / 2 },
+        right: { x: box / 2, y: h / 2 },
+        left: { x: STAGE_W - box / 2, y: h / 2 }
+      }
+    };
+  }
+  function inWorkHours(d = /* @__PURE__ */ new Date()) {
+    const day = d.getDay();
+    if (day === 0 || day === 6) return false;
+    const m = d.getHours() * 60 + d.getMinutes();
+    return m >= 9 * 60 && m < 18 * 60;
+  }
+
   // src/lib/grokbot/pet-shell.ts
   var HOLD_MS = 220;
   var TAP_MS = 280;
   var DBL_MS = 340;
   var COLOR_KEY = "grok-face-color";
   var POS_KEY = "grok-companion-pos";
-  var STAGE = { w: 580, h: 600 };
+  var first = layoutFor("l");
+  var STAGE = { w: first.w, h: first.h };
   var BALL_IN_STAGE = {
-    bottom: { x: 290, y: 220 },
-    top: { x: 290, y: 380 },
-    right: { x: 160, y: 300 },
-    left: { x: 420, y: 300 }
+    bottom: { ...first.ball.bottom },
+    top: { ...first.ball.top },
+    right: { ...first.ball.right },
+    left: { ...first.ball.left }
   };
+  function adoptLayout(id) {
+    const L = layoutFor(id);
+    STAGE.w = L.w;
+    STAGE.h = L.h;
+    BALL_IN_STAGE.bottom = L.ball.bottom;
+    BALL_IN_STAGE.top = L.ball.top;
+    BALL_IN_STAGE.right = L.ball.right;
+    BALL_IN_STAGE.left = L.ball.left;
+    return L;
+  }
   function pickDockSide(bx, by, area, edge = 110) {
     const l = bx - area.x;
     const r = area.x + area.w - bx;
@@ -2136,8 +2219,8 @@
   var PET_CSS = `
 .grok-stage {
   position: relative;
-  width: ${STAGE.w}px;
-  height: ${STAGE.h}px;
+  width: var(--stage-w, 580px);
+  height: var(--stage-h, 600px);
   pointer-events: none;
   -webkit-user-select: none;
   user-select: none;
@@ -2146,8 +2229,8 @@
 .grok-stage .dock { pointer-events: auto; }
 .grok-stage .face {
   position: absolute;
-  width: ${BOT_SIZES.companion.box}px;
-  height: ${BOT_SIZES.companion.box}px;
+  width: var(--face-box, 440px);
+  height: var(--face-box, 440px);
   cursor: grab;
   touch-action: none;
 }
@@ -2212,18 +2295,18 @@
   backdrop-filter: blur(12px);
 }
 .grok-stage .studio:hover { background: rgba(22, 21, 19, 0.6); }
-.grok-stage[data-side="bottom"] .face { left: 70px; top: 0; }
-.grok-stage[data-side="bottom"] .dock { left: 0; right: 0; top: 400px; }
-.grok-stage[data-side="top"] .face { left: 70px; bottom: 0; top: auto; }
-.grok-stage[data-side="top"] .dock { left: 0; right: 0; bottom: 400px; top: auto; }
-.grok-stage[data-side="right"] .face { left: 0; top: 80px; }
+.grok-stage[data-side="bottom"] .face { left: var(--face-inset, 70px); top: 0; }
+.grok-stage[data-side="bottom"] .dock { left: 0; right: 0; top: var(--dock-main, 400px); }
+.grok-stage[data-side="top"] .face { left: var(--face-inset, 70px); bottom: 0; top: auto; }
+.grok-stage[data-side="top"] .dock { left: 0; right: 0; bottom: var(--dock-main, 400px); top: auto; }
+.grok-stage[data-side="right"] .face { left: 0; top: var(--face-side-top, 80px); }
 .grok-stage[data-side="right"] .dock {
-  left: 400px; top: 50%; transform: translateY(-50%);
+  left: var(--dock-main, 400px); top: 50%; transform: translateY(-50%);
   width: 168px;
 }
-.grok-stage[data-side="left"] .face { right: 0; left: auto; top: 80px; }
+.grok-stage[data-side="left"] .face { right: 0; left: auto; top: var(--face-side-top, 80px); }
 .grok-stage[data-side="left"] .dock {
-  right: 400px; left: auto; top: 50%; transform: translateY(-50%);
+  right: var(--dock-main, 400px); left: auto; top: 50%; transform: translateY(-50%);
   width: 168px;
 }
 .grok-stage[data-side="right"] .bar,
@@ -2278,6 +2361,7 @@
   function bootMacCompanion(opts = {}) {
     injectStyle();
     const pet = Boolean(window.pet?.isPet || new URLSearchParams(location.search).has("pet"));
+    const web = !pet;
     if (pet) document.documentElement.classList.add("pet");
     const host = opts.root ?? document.querySelector("#stage") ?? document.body;
     const stage = ensureStage(host);
@@ -2301,6 +2385,12 @@
     let raf = 0;
     let disposed = false;
     let loopOn = false;
+    let pos = { x: 0, y: 0 };
+    let vel = { x: 0, y: 0 };
+    let last = { x: 0, y: 0, t: 0 };
+    let dragging = false;
+    let inertiaRaf = 0;
+    let webSide = "bottom";
     const faceCtx = canvas.getContext("2d");
     const wheelCtx = wheel.getContext("2d");
     const menuCtx = menuBot?.getContext("2d") ?? null;
@@ -2321,13 +2411,71 @@
       if (btn) btn.textContent = isMuted() ? "Muted" : "Sound";
       btn?.classList.toggle("on", !isMuted());
     }
+    function paintSize() {
+      prefBar?.querySelectorAll("[data-size]").forEach((btn) => {
+        btn.classList.toggle("on", btn.dataset.size === petSize);
+      });
+    }
+    function paintAuto() {
+      const btn = prefBar?.querySelector("[data-pref=auto]");
+      if (btn) btn.textContent = autoWork ? "Auto" : "Manual";
+      btn?.classList.toggle("on", autoWork);
+    }
     function sceneSfx() {
       return SCENES[engine.scene].idle.sfx;
     }
-    function applyScene(id) {
+    let petSize = readPetSize();
+    let autoWork = readAutoWork();
+    let meetingOn = false;
+    let sceneBeforeAuto = null;
+    let userPinned = false;
+    let lastTrayAt = 0;
+    const trayCanvas = document.createElement("canvas");
+    trayCanvas.width = 44;
+    trayCanvas.height = 44;
+    const trayCtx = trayCanvas.getContext("2d");
+    function shouldAutoWork() {
+      return autoWork && (meetingOn || inWorkHours());
+    }
+    function applyScene(id, fromUser = true) {
+      if (fromUser && shouldAutoWork() && id !== "work") userPinned = true;
+      if (fromUser && id === "work") userPinned = false;
       engine.setScene(id);
       paintScene();
       window.pet?.setScene?.(id);
+    }
+    function syncAutoWork() {
+      const need = shouldAutoWork();
+      if (need) {
+        if (engine.scene !== "work" && !userPinned) {
+          sceneBeforeAuto = engine.scene;
+          engine.setScene("work");
+          paintScene();
+          window.pet?.setScene?.("work");
+        }
+      } else {
+        userPinned = false;
+        if (engine.scene === "work" && sceneBeforeAuto && sceneBeforeAuto !== "work") {
+          const back = sceneBeforeAuto;
+          sceneBeforeAuto = null;
+          applyScene(back, false);
+        }
+      }
+    }
+    function applyPetSize(id, persist = true) {
+      petSize = id;
+      const L = adoptLayout(id);
+      stage.style.setProperty("--stage-w", `${L.w}px`);
+      stage.style.setProperty("--stage-h", `${L.h}px`);
+      stage.style.setProperty("--face-box", `${L.box}px`);
+      stage.style.setProperty("--face-inset", `${L.inset}px`);
+      stage.style.setProperty("--dock-main", `${L.dockMain}px`);
+      stage.style.setProperty("--face-side-top", `${L.faceSideTop}px`);
+      sizeCanvas();
+      paintSize();
+      if (persist) writePetSize(id);
+      window.pet?.setSize?.(id);
+      if (!pet) placeWeb();
     }
     function showDock(open) {
       dockOpen = open;
@@ -2351,11 +2499,26 @@
       stage.dataset.side = s;
     });
     const offScene = window.pet?.onScene?.((s) => {
-      if (isSceneId(s)) applyScene(s);
+      if (isSceneId(s)) applyScene(s, true);
     });
     const offVisible = window.pet?.onVisible?.((v) => setPaused(!v));
     const offTrayMute = window.pet?.onMute?.((on) => {
       if (on !== isMuted()) setMuted(on);
+    });
+    const offMeeting = window.pet?.onMeeting?.((on) => {
+      meetingOn = Boolean(on);
+      syncAutoWork();
+    });
+    const offSize = window.pet?.onSize?.((id) => {
+      if (isPetSize(id) && id !== petSize) applyPetSize(id, true);
+    });
+    const offAuto = window.pet?.onAutoWork?.((on) => {
+      if (on === autoWork) return;
+      autoWork = on;
+      writeAutoWork(on);
+      paintAuto();
+      if (!on) userPinned = false;
+      syncAutoWork();
     });
     if (pet) {
       wrap.addEventListener("pointerenter", onFaceEnter);
@@ -2379,7 +2542,7 @@
           el.height = px;
         }
       };
-      fit(canvas, BOT_SIZES.companion.box);
+      fit(canvas, layoutFor(petSize).box);
       if (menuBot) fit(menuBot, BOT_SIZES.menubar.box);
     }
     function paintWheel() {
@@ -2406,15 +2569,23 @@
           return;
         }
         engine.tick(now);
+        const scale = layoutFor(petSize).faceScale;
         if (faceCtx) {
           drawGrokBot(faceCtx, engine, canvas.width || 480, THEME, {
-            faceScale: BOT_SIZES.companion.faceScale
+            faceScale: scale
           });
         }
         if (menuCtx && menuBot) {
           drawGrokBot(menuCtx, engine, menuBot.width || 22, THEME, {
             faceScale: BOT_SIZES.menubar.faceScale
           });
+        }
+        if (pet && trayCtx && now - lastTrayAt > 120) {
+          lastTrayAt = now;
+          drawGrokBot(trayCtx, engine, 44, THEME, {
+            faceScale: BOT_SIZES.menubar.faceScale
+          });
+          window.pet?.setTrayIcon?.(trayCanvas.toDataURL("image/png"));
         }
         raf = requestAnimationFrame(tick);
       };
@@ -2425,7 +2596,10 @@
     if (menuBot) ro.observe(menuBot);
     sizeCanvas();
     paintWheel();
+    applyPetSize(petSize, false);
     startLoop();
+    syncAutoWork();
+    const autoTimer = window.setInterval(syncAutoWork, 3e4);
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const onMotion = () => {
       engine.reducedMotion = motion.matches;
@@ -2498,16 +2672,41 @@
     paintPresets();
     if (prefBar) {
       prefBar.replaceChildren();
+      Object.keys(PET_SIZES).forEach((id) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.dataset.size = id;
+        b.textContent = PET_SIZES[id].label;
+        b.title = PET_SIZES[id].hint;
+        b.addEventListener("click", () => applyPetSize(id));
+        prefBar.appendChild(b);
+      });
       const muteBtn = document.createElement("button");
       muteBtn.type = "button";
       muteBtn.dataset.pref = "mute";
       muteBtn.title = "Toggle sounds";
       muteBtn.addEventListener("click", () => setMuted(!isMuted()));
       prefBar.appendChild(muteBtn);
+      const autoBtn = document.createElement("button");
+      autoBtn.type = "button";
+      autoBtn.dataset.pref = "auto";
+      autoBtn.title = "Work hours 9\u201318 and meetings switch to Work";
+      autoBtn.addEventListener("click", () => {
+        autoWork = !autoWork;
+        writeAutoWork(autoWork);
+        paintAuto();
+        window.pet?.setAutoWork?.(autoWork);
+        if (!autoWork) userPinned = false;
+        syncAutoWork();
+      });
+      prefBar.appendChild(autoBtn);
       paintMute();
+      paintSize();
+      paintAuto();
     }
     window.pet?.setScene?.(engine.scene);
     window.pet?.setMuted?.(isMuted());
+    window.pet?.setAutoWork?.(autoWork);
     if (studio && opts.studioHref) {
       studio.hidden = false;
       studio.href = opts.studioHref;
@@ -2531,13 +2730,6 @@
     };
     wheel.addEventListener("pointerdown", onWheelDown);
     wheel.addEventListener("pointermove", onWheelMove);
-    const web = !pet;
-    let pos = { x: 0, y: 0 };
-    let vel = { x: 0, y: 0 };
-    let last = { x: 0, y: 0, t: 0 };
-    let dragging = false;
-    let inertiaRaf = 0;
-    let webSide = "bottom";
     function area() {
       return { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight };
     }
@@ -2715,6 +2907,10 @@
       if (typeof offScene === "function") offScene();
       if (typeof offVisible === "function") offVisible();
       if (typeof offTrayMute === "function") offTrayMute();
+      if (typeof offMeeting === "function") offMeeting();
+      if (typeof offSize === "function") offSize();
+      if (typeof offAuto === "function") offAuto();
+      window.clearInterval(autoTimer);
     };
   }
 

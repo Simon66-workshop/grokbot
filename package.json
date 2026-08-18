@@ -1,6 +1,6 @@
 {
   "name": "grokbot",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "A living Grok Bot desktop companion",
   "author": "Simon",
   "private": true,

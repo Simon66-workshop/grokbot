@@ -29,11 +29,29 @@ contextBridge.exposeInMainWorld("pet", {
   onMute(fn) {
     return listen("pet-mute", fn);
   },
+  onMeeting(fn) {
+    return listen("pet-meeting", fn);
+  },
+  onSize(fn) {
+    return listen("pet-size", fn);
+  },
+  onAutoWork(fn) {
+    return listen("pet-auto-work", fn);
+  },
   setScene(scene) {
     ipcRenderer.send("pet-set-scene", scene);
   },
   setMuted(muted) {
     ipcRenderer.send("pet-set-mute", muted);
+  },
+  setSize(id) {
+    ipcRenderer.send("pet-set-size", id);
+  },
+  setAutoWork(on) {
+    ipcRenderer.send("pet-set-auto-work", on);
+  },
+  setTrayIcon(dataUrl) {
+    ipcRenderer.send("pet-tray-icon", dataUrl);
   },
   hide() {
     ipcRenderer.send("pet-hide");
