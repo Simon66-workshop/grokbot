@@ -613,6 +613,8 @@ function create() {
   win.webContents.on("did-finish-load", () => {
     win.webContents.send("pet-side", side);
     win.webContents.send("pet-visible", visible);
+    win.webContents.send("pet-scene", scene);
+    win.webContents.send("pet-mute", muted);
     win.webContents.send("pet-size", petSize);
     win.webContents.send("pet-auto-work", autoWork);
     win.webContents.send("pet-meeting", meeting);

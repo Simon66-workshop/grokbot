@@ -2431,8 +2431,11 @@
     }
     function paintMute() {
       const btn = prefBar?.querySelector("[data-pref=mute]");
-      if (btn) btn.textContent = isMuted() ? "Muted" : "Sound";
-      btn?.classList.toggle("on", !isMuted());
+      if (!btn) return;
+      btn.textContent = "Mute";
+      btn.classList.toggle("on", isMuted());
+      btn.setAttribute("aria-pressed", isMuted() ? "true" : "false");
+      btn.title = isMuted() ? "Sound off \xB7 M" : "Sound on \xB7 M";
     }
     function paintSize() {
       prefBar?.querySelectorAll("[data-size]").forEach((btn) => {
@@ -2709,7 +2712,7 @@
       const muteBtn = document.createElement("button");
       muteBtn.type = "button";
       muteBtn.dataset.pref = "mute";
-      muteBtn.title = "Toggle sounds";
+      muteBtn.title = "Sound on \xB7 M";
       muteBtn.addEventListener("click", () => setMuted(!isMuted()));
       prefBar.appendChild(muteBtn);
       const autoBtn = document.createElement("button");
