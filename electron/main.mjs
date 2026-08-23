@@ -28,7 +28,7 @@ let lastIconAt = 0;
 const DRAG_ARM_PX = 6;
 let drag = null;
 let codexTimer = null;
-let lastCodex = { status: "idle", label: "idle", name: "", threads: 0, processOn: false };
+let lastCodex = { status: "idle", label: "idle", name: "", threads: 0, processOn: false, tool: "" };
 let lastCodexNote = { status: "idle", at: 0 };
 let codexReady = false;
 
@@ -373,7 +373,7 @@ function applyTrayMenu() {
       click: (item) => setMutedState(item.checked),
     },
     {
-      label: "Codex Watch",
+      label: "Agents Watch",
       type: "checkbox",
       checked: watchCodex,
       click: (item) => {
@@ -382,7 +382,7 @@ function applyTrayMenu() {
         win?.webContents.send("pet-codex-watch", watchCodex);
         applyMenus();
         if (watchCodex) void pollCodex();
-        else emitCodex({ status: "idle", label: "idle", name: "", threads: 0, processOn: false }, true);
+        else emitCodex({ status: "idle", label: "idle", name: "", threads: 0, processOn: false, tool: "" }, true);
       },
     },
     {
@@ -420,7 +420,7 @@ function applyTrayMenu() {
     tray = new Tray(img.resize({ width: 22, height: 22 }));
     tray.on("click", () => toggleVisible());
   }
-  tray.setToolTip(lastCodex.status === "idle" ? "GrokBot" : `GrokBot · Codex ${lastCodex.label}`);
+  tray.setToolTip(lastCodex.status === "idle" ? "GrokBot" : `GrokBot · ${lastCodex.tool || "Agents"} ${lastCodex.label}`);
   tray.setContextMenu(menu);
   applyAppMenu();
 }
@@ -535,7 +535,7 @@ function emitCodex(snap, silent = false) {
   lastCodex = snap;
   win?.webContents.send("pet-codex", snap);
   if (tray && !tray.isDestroyed()) {
-    tray.setToolTip(snap.status === "idle" ? "GrokBot" : `GrokBot · Codex ${snap.label}`);
+    tray.setToolTip(snap.status === "idle" ? "GrokBot" : `GrokBot · ${snap.tool || "Agents"} ${snap.label}`);
   }
   if (silent || !watchCodex) {
     lastCodexNote = { status: snap.status, at: Date.now() };
@@ -545,7 +545,7 @@ function emitCodex(snap, silent = false) {
   const now = Date.now();
   if (snap.status === lastCodexNote.status && now - lastCodexNote.at < 20_000) return;
   lastCodexNote = { status: snap.status, at: now };
-  const copy = notifyCopy(snap.status, snap.name, snap.threads);
+  const copy = notifyCopy(snap.status, snap.name, snap.threads, snap.tool || "Agents");
   if (!copy || !Notification.isSupported()) return;
   try {
     new Notification({ title: copy.title, body: copy.body, silent: muted }).show();
@@ -756,7 +756,7 @@ ipcMain.on("pet-set-codex-watch", (_e, on) => {
   savePrefs();
   applyTrayMenu();
   if (watchCodex) void pollCodex();
-  else emitCodex({ status: "idle", label: "idle", name: "", threads: 0, processOn: false }, true);
+  else emitCodex({ status: "idle", label: "idle", name: "", threads: 0, processOn: false, tool: "" }, true);
 });
 
 ipcMain.on("pet-hide", () => setVisible(false));

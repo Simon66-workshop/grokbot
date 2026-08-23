@@ -476,7 +476,7 @@ export function bootMacCompanion(opts: BootOptions = {}) {
   function paintCodex() {
     const btn = prefBar?.querySelector<HTMLButtonElement>("[data-pref=codex]");
     if (btn) {
-      btn.textContent = "Codex";
+      btn.textContent = "Agents";
       btn.classList.toggle("on", watchCodex);
       btn.setAttribute("aria-pressed", watchCodex ? "true" : "false");
     }
@@ -486,13 +486,13 @@ export function bootMacCompanion(opts: BootOptions = {}) {
       watchEl.textContent = "";
       return;
     }
-    const bits = ["Codex", codexSnap.label];
+    const bits = [codexSnap.tool || "Agents", codexSnap.label];
     if (codexSnap.name) bits.push(codexSnap.name);
     watchEl.textContent = bits.join(" · ");
     watchEl.hidden = false;
   }
 
-  function applyCodexSnap(snap: { status: string; label: string; name: string; threads: number }, fromWatch = true) {
+  function applyCodexSnap(snap: { status: string; label: string; name: string; threads: number; tool?: string }, fromWatch = true) {
     const prev = codexSnap?.status;
     codexSnap = snap;
     paintCodex();
@@ -519,7 +519,7 @@ export function bootMacCompanion(opts: BootOptions = {}) {
   let autoWork = readAutoWork();
   let watchCodex = readCodexWatch();
   let meetingOn = false;
-  let codexSnap: { status: string; label: string; name: string; threads: number } | null = null;
+  let codexSnap: { status: string; label: string; name: string; threads: number; tool?: string } | null = null;
   let sceneBeforeAuto: SceneId | null = null;
   let userPinned = false;
   let lastTrayAt = 0;
@@ -832,7 +832,7 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     const codexBtn = document.createElement("button");
     codexBtn.type = "button";
     codexBtn.dataset.pref = "codex";
-    codexBtn.title = "Watch local Codex threads";
+    codexBtn.title = "Watch local Codex, Claude, Cursor, Gemini, and other agents";
     codexBtn.addEventListener("click", () => {
       watchCodex = !watchCodex;
       writeCodexWatch(watchCodex);

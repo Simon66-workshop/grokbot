@@ -10,6 +10,7 @@ interface CodexSnap {
   name: string;
   threads: number;
   processOn: boolean;
+  tool?: string;
 }
 
 interface PetBridge {

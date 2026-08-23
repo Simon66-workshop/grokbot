@@ -82,3 +82,23 @@ test("snapshotFromFiles reads a fake sessions folder", () => {
   assert.equal(copy.title, "Codex is waiting");
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test("classifyRows: Claude tool_use is running, text reply waits", () => {
+  const running = [
+    {
+      type: "assistant",
+      message: { content: [{ type: "tool_use", name: "Bash", input: { command: "ls" } }] },
+    },
+  ];
+  const waiting = [
+    { type: "user", message: { content: [{ type: "text", text: "hi" }] } },
+    { type: "assistant", message: { content: [{ type: "text", text: "done" }] } },
+  ];
+  assert.equal(classifyRows(running, { processOn: true, ageMs: 500 }), "running");
+  assert.equal(classifyRows(waiting, { processOn: true, ageMs: 500 }), "waiting");
+});
+
+test("notifyCopy uses the tool name", () => {
+  const copy = notifyCopy("waiting", "grokbot", 1, "Claude");
+  assert.equal(copy.title, "Claude is waiting");
+});
