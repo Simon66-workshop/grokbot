@@ -14,7 +14,7 @@ npm run pet
 
 或者双击 `mac/Open GrokBot.command`。
 
-菜单栏托盘是**活的 22px 脸**。右键托盘：**显示 / 隐藏、场景、S/M/L、静音、Auto Work、开机启动、退出。** 菜单栏 GrokBot 下拉里也可以勾 **Mute**。单实例。右键球体可隐藏。
+菜单栏托盘是**活的 22px 脸**。右键托盘：**显示 / 隐藏、场景、S/M/L、静音、Codex Watch、Auto Work、开机启动、退出。** 菜单栏 GrokBot 下拉里也可以勾 **Mute**。单实例。右键球体可隐藏。
 
 ### 打成 GrokBot.app
 
@@ -34,6 +34,7 @@ npm run dist
 - **拖动球体**：跟着鼠标走，可贴到四边四角；外接屏拔掉会落到当前屏，插回去回到原位
 - **S / M / L**：脸 200 / 320 / 440
 - **Auto Work**：工作日 9–18，或 Zoom / Teams / FaceTime / Webex / 日历里正在进行的会议 → 自动切 Work；结束回到原来的场景。开会时你手动切 Play 会记住，不会立刻抢回去
+- **Codex Watch**：盯本地 Codex 线程（`~/.codex/sessions`）。它在跑会思考，等你点头会叫一声并弹系统通知，跑完会高兴一下。只读会话状态，不上传内容。面板上可关
 - 场景：**Work** 安静 · **Play** 会看你、偶尔乱蹦，90 秒没人理就打盹 · **Demo** 走 Tour
 - 空格眨眼 · `1` Work · `2` Play · `D` Demo · `R` 复位 · `M` 静音
 

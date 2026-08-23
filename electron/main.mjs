@@ -1,9 +1,10 @@
-import { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage } from "electron";
+import { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, Notification } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import { execFile } from "node:child_process";
 import { layoutFor, isPetSize } from "./layout.mjs";
+import { notifyCopy, readCodexSnapshot } from "./codex.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const POS_FILE = path.join(app.getPath("userData"), "pet-pos.json");
@@ -19,18 +20,24 @@ let visible = true;
 let scene = "companion";
 let muted = false;
 let autoWork = true;
+let watchCodex = true;
 let meeting = false;
 let petSize = "l";
 let layout = layoutFor("l");
 let lastIconAt = 0;
 const DRAG_ARM_PX = 6;
 let drag = null;
+let codexTimer = null;
+let lastCodex = { status: "idle", label: "idle", name: "", threads: 0, processOn: false };
+let lastCodexNote = { status: "idle", at: 0 };
+let codexReady = false;
 
 function loadPrefs() {
   try {
     const raw = JSON.parse(fs.readFileSync(PREFS_FILE, "utf8"));
     if (isPetSize(raw.size)) petSize = raw.size;
     if (typeof raw.autoWork === "boolean") autoWork = raw.autoWork;
+    if (typeof raw.watchCodex === "boolean") watchCodex = raw.watchCodex;
     if (typeof raw.muted === "boolean") muted = raw.muted;
     if (raw.scene === "work" || raw.scene === "companion" || raw.scene === "demo") scene = raw.scene;
   } catch {
@@ -41,7 +48,7 @@ function loadPrefs() {
 
 function savePrefs() {
   try {
-    fs.writeFileSync(PREFS_FILE, JSON.stringify({ size: petSize, autoWork, muted, scene }));
+    fs.writeFileSync(PREFS_FILE, JSON.stringify({ size: petSize, autoWork, watchCodex, muted, scene }));
   } catch {
     /* ignore */
   }
@@ -366,6 +373,19 @@ function applyTrayMenu() {
       click: (item) => setMutedState(item.checked),
     },
     {
+      label: "Codex Watch",
+      type: "checkbox",
+      checked: watchCodex,
+      click: (item) => {
+        watchCodex = item.checked;
+        savePrefs();
+        win?.webContents.send("pet-codex-watch", watchCodex);
+        applyMenus();
+        if (watchCodex) void pollCodex();
+        else emitCodex({ status: "idle", label: "idle", name: "", threads: 0, processOn: false }, true);
+      },
+    },
+    {
       label: "Auto Work",
       type: "checkbox",
       checked: autoWork,
@@ -398,9 +418,9 @@ function applyTrayMenu() {
     const img = iconImage();
     img.setTemplateImage(false);
     tray = new Tray(img.resize({ width: 22, height: 22 }));
-    tray.setToolTip("GrokBot");
     tray.on("click", () => toggleVisible());
   }
+  tray.setToolTip(lastCodex.status === "idle" ? "GrokBot" : `GrokBot · Codex ${lastCodex.label}`);
   tray.setContextMenu(menu);
   applyAppMenu();
 }
@@ -511,6 +531,54 @@ function startFocusWatch() {
   calTimer = setInterval(pollCal, 90_000);
 }
 
+function emitCodex(snap, silent = false) {
+  lastCodex = snap;
+  win?.webContents.send("pet-codex", snap);
+  if (tray && !tray.isDestroyed()) {
+    tray.setToolTip(snap.status === "idle" ? "GrokBot" : `GrokBot · Codex ${snap.label}`);
+  }
+  if (silent || !watchCodex) {
+    lastCodexNote = { status: snap.status, at: Date.now() };
+    return;
+  }
+  if (snap.status !== "waiting" && snap.status !== "done" && snap.status !== "error") return;
+  const now = Date.now();
+  if (snap.status === lastCodexNote.status && now - lastCodexNote.at < 20_000) return;
+  lastCodexNote = { status: snap.status, at: now };
+  const copy = notifyCopy(snap.status, snap.name, snap.threads);
+  if (!copy || !Notification.isSupported()) return;
+  try {
+    new Notification({ title: copy.title, body: copy.body, silent: muted }).show();
+  } catch {
+    /* ignore */
+  }
+}
+
+async function pollCodex() {
+  if (!watchCodex) return;
+  try {
+    const snap = await readCodexSnapshot({ runCmd });
+    if (!codexReady) {
+      codexReady = true;
+      emitCodex(snap, true);
+      return;
+    }
+    const changed =
+      snap.status !== lastCodex.status ||
+      snap.threads !== lastCodex.threads ||
+      snap.name !== lastCodex.name;
+    if (changed) emitCodex(snap);
+  } catch {
+    /* ignore */
+  }
+}
+
+function startCodexWatch() {
+  if (codexTimer) return;
+  void pollCodex();
+  codexTimer = setInterval(() => void pollCodex(), 8_000);
+}
+
 function restoreToDisplay(d) {
   const saved = savedForDisplay(d);
   const a = d.workArea;
@@ -552,8 +620,10 @@ function cleanup() {
   stopCursor();
   if (meetTimer) clearInterval(meetTimer);
   if (calTimer) clearInterval(calTimer);
+  if (codexTimer) clearInterval(codexTimer);
   meetTimer = null;
   calTimer = null;
+  codexTimer = null;
   tray?.destroy();
   tray = null;
 }
@@ -617,6 +687,8 @@ function create() {
     win.webContents.send("pet-mute", muted);
     win.webContents.send("pet-size", petSize);
     win.webContents.send("pet-auto-work", autoWork);
+    win.webContents.send("pet-codex-watch", watchCodex);
+    win.webContents.send("pet-codex", lastCodex);
     win.webContents.send("pet-meeting", meeting);
     const b = ballScreen();
     placeWindow(b.x, b.y, side);
@@ -630,6 +702,7 @@ function create() {
 
   applyTrayMenu();
   startFocusWatch();
+  startCodexWatch();
   wireDisplays();
 }
 
@@ -676,6 +749,14 @@ ipcMain.on("pet-set-auto-work", (_e, on) => {
   autoWork = Boolean(on);
   savePrefs();
   applyTrayMenu();
+});
+
+ipcMain.on("pet-set-codex-watch", (_e, on) => {
+  watchCodex = Boolean(on);
+  savePrefs();
+  applyTrayMenu();
+  if (watchCodex) void pollCodex();
+  else emitCodex({ status: "idle", label: "idle", name: "", threads: 0, processOn: false }, true);
 });
 
 ipcMain.on("pet-hide", () => setVisible(false));

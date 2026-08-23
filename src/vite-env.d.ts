@@ -4,6 +4,14 @@ interface PetDragResult {
   moved: boolean;
 }
 
+interface CodexSnap {
+  status: string;
+  label: string;
+  name: string;
+  threads: number;
+  processOn: boolean;
+}
+
 interface PetBridge {
   isPet: boolean;
   moveBy: (dx: number, dy: number) => void;
@@ -21,10 +29,13 @@ interface PetBridge {
   onMeeting?: (fn: (on: boolean) => void) => () => void;
   onSize?: (fn: (id: string) => void) => () => void;
   onAutoWork?: (fn: (on: boolean) => void) => () => void;
+  onCodex?: (fn: (snap: CodexSnap) => void) => () => void;
+  onCodexWatch?: (fn: (on: boolean) => void) => () => void;
   setScene?: (scene: string) => void;
   setMuted?: (muted: boolean) => void;
   setSize?: (id: string) => void;
   setAutoWork?: (on: boolean) => void;
+  setCodexWatch?: (on: boolean) => void;
   setTrayIcon?: (dataUrl: string) => void;
   hide?: () => void;
   quit?: () => void;

@@ -16,6 +16,7 @@ export const STAGE_W = 580;
 export const DOCK_ROOM = 160;
 export const SIZE_KEY = "grok-pet-size";
 export const AUTO_WORK_KEY = "grok-auto-work";
+export const CODEX_WATCH_KEY = "grok-codex-watch";
 
 export function isPetSize(id: string): id is PetSizeId {
   return id === "s" || id === "m" || id === "l";
@@ -53,6 +54,25 @@ export function readAutoWork() {
 export function writeAutoWork(on: boolean) {
   try {
     localStorage.setItem(AUTO_WORK_KEY, on ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+}
+
+export function readCodexWatch() {
+  try {
+    const v = localStorage.getItem(CODEX_WATCH_KEY);
+    if (v === "0") return false;
+    if (v === "1") return true;
+  } catch {
+    /* ignore */
+  }
+  return true;
+}
+
+export function writeCodexWatch(on: boolean) {
+  try {
+    localStorage.setItem(CODEX_WATCH_KEY, on ? "1" : "0");
   } catch {
     /* ignore */
   }

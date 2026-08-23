@@ -19,8 +19,10 @@ import {
   isPetSize,
   layoutFor,
   readAutoWork,
+  readCodexWatch,
   readPetSize,
   writeAutoWork,
+  writeCodexWatch,
   writePetSize,
   type PetSizeId,
 } from "./layout";
@@ -279,6 +281,17 @@ const PET_CSS = `
   box-shadow: 0 0 0 2px #fffcf6;
 }
 .grok-stage .bar button.on { background: rgba(255,255,255,0.2); }
+.grok-stage #prefs { flex-wrap: wrap; }
+.grok-stage .watch {
+  max-width: 220px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(27, 86, 243, 0.62);
+  color: #fffcf6;
+  font: 500 10px/1.3 "SF Pro Text", "Helvetica Neue", sans-serif;
+  text-align: center;
+}
+.grok-stage .watch[hidden] { display: none; }
 .grok-stage .studio {
   border-radius: 999px;
   background: rgba(22, 21, 19, 0.4);
@@ -352,6 +365,7 @@ function ensureStage(root: HTMLElement) {
         <div class="bar" id="scenes"></div>
         <div class="bar" id="actions"></div>
         <div class="bar" id="prefs"></div>
+        <div class="watch" id="watch" hidden></div>
         <a class="studio" id="studio" hidden>Studio</a>
       </div>`,
     );
@@ -388,6 +402,7 @@ export function bootMacCompanion(opts: BootOptions = {}) {
   const sceneBar = stage.querySelector<HTMLDivElement>("#scenes")!;
   const actionBar = stage.querySelector<HTMLDivElement>("#actions")!;
   const prefBar = stage.querySelector<HTMLDivElement>("#prefs");
+  const watchEl = stage.querySelector<HTMLDivElement>("#watch");
   const studio = stage.querySelector<HTMLAnchorElement>("#studio");
   const menuBot = document.querySelector<HTMLCanvasElement>("#menu-bot");
 
@@ -458,13 +473,53 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     btn?.classList.toggle("on", autoWork);
   }
 
+  function paintCodex() {
+    const btn = prefBar?.querySelector<HTMLButtonElement>("[data-pref=codex]");
+    if (btn) {
+      btn.textContent = "Codex";
+      btn.classList.toggle("on", watchCodex);
+      btn.setAttribute("aria-pressed", watchCodex ? "true" : "false");
+    }
+    if (!watchEl) return;
+    if (!watchCodex || !codexSnap || codexSnap.status === "idle") {
+      watchEl.hidden = true;
+      watchEl.textContent = "";
+      return;
+    }
+    const bits = ["Codex", codexSnap.label];
+    if (codexSnap.name) bits.push(codexSnap.name);
+    watchEl.textContent = bits.join(" · ");
+    watchEl.hidden = false;
+  }
+
+  function applyCodexSnap(snap: { status: string; label: string; name: string; threads: number }, fromWatch = true) {
+    const prev = codexSnap?.status;
+    codexSnap = snap;
+    paintCodex();
+    if (!watchCodex || !fromWatch) return;
+    if (snap.status === prev) return;
+    engine.noteInput();
+    if (snap.status === "running") engine.play("think");
+    else if (snap.status === "waiting") {
+      engine.play("exclaim");
+      engine.bounceOnce();
+      playSfx("dock");
+    } else if (snap.status === "done") {
+      engine.setExpression(5);
+      engine.bounceOnce();
+      playSfx("land");
+    } else if (snap.status === "error") engine.play("think");
+  }
+
   function sceneSfx() {
     return SCENES[engine.scene].idle.sfx;
   }
 
   let petSize = readPetSize();
   let autoWork = readAutoWork();
+  let watchCodex = readCodexWatch();
   let meetingOn = false;
+  let codexSnap: { status: string; label: string; name: string; threads: number } | null = null;
   let sceneBeforeAuto: SceneId | null = null;
   let userPinned = false;
   let lastTrayAt = 0;
@@ -567,6 +622,15 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     paintAuto();
     if (!on) userPinned = false;
     syncAutoWork();
+  });
+  const offCodex = window.pet?.onCodex?.((snap) => {
+    applyCodexSnap(snap);
+  });
+  const offCodexWatch = window.pet?.onCodexWatch?.((on) => {
+    if (on === watchCodex) return;
+    watchCodex = on;
+    writeCodexWatch(on);
+    paintCodex();
   });
 
   if (pet) {
@@ -765,14 +829,28 @@ export function bootMacCompanion(opts: BootOptions = {}) {
       syncAutoWork();
     });
     prefBar.appendChild(autoBtn);
+    const codexBtn = document.createElement("button");
+    codexBtn.type = "button";
+    codexBtn.dataset.pref = "codex";
+    codexBtn.title = "Watch local Codex threads";
+    codexBtn.addEventListener("click", () => {
+      watchCodex = !watchCodex;
+      writeCodexWatch(watchCodex);
+      paintCodex();
+      window.pet?.setCodexWatch?.(watchCodex);
+      if (!watchCodex) applyCodexSnap({ status: "idle", label: "idle", name: "", threads: 0 }, false);
+    });
+    prefBar.appendChild(codexBtn);
     paintMute();
     paintSize();
     paintAuto();
+    paintCodex();
   }
 
   window.pet?.setScene?.(engine.scene);
   window.pet?.setMuted?.(isMuted());
   window.pet?.setAutoWork?.(autoWork);
+  window.pet?.setCodexWatch?.(watchCodex);
 
   if (studio && opts.studioHref) {
     studio.hidden = false;
@@ -1058,6 +1136,8 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     if (typeof offMeeting === "function") offMeeting();
     if (typeof offSize === "function") offSize();
     if (typeof offAuto === "function") offAuto();
+    if (typeof offCodex === "function") offCodex();
+    if (typeof offCodexWatch === "function") offCodexWatch();
     if (typeof offDragArmed === "function") offDragArmed();
     if (typeof offDragFinished === "function") offDragFinished();
     window.clearInterval(autoTimer);

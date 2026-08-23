@@ -50,6 +50,12 @@ contextBridge.exposeInMainWorld("pet", {
   onAutoWork(fn) {
     return listen("pet-auto-work", fn);
   },
+  onCodex(fn) {
+    return listen("pet-codex", fn);
+  },
+  onCodexWatch(fn) {
+    return listen("pet-codex-watch", fn);
+  },
   setScene(scene) {
     ipcRenderer.send("pet-set-scene", scene);
   },
@@ -61,6 +67,9 @@ contextBridge.exposeInMainWorld("pet", {
   },
   setAutoWork(on) {
     ipcRenderer.send("pet-set-auto-work", on);
+  },
+  setCodexWatch(on) {
+    ipcRenderer.send("pet-set-codex-watch", on);
   },
   setTrayIcon(dataUrl) {
     ipcRenderer.send("pet-tray-icon", dataUrl);
