@@ -614,11 +614,14 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     }
   }
 
+  const dismissedPerms = new Set<string>();
+
   function paintDeskChips() {
     if (!deskEl) return;
     deskEl.replaceChildren();
     const chips: { text: string; kind?: string; perm?: string }[] = [];
     for (const p of desk.perms?.missing || []) {
+      if (dismissedPerms.has(p.id)) continue;
       chips.push({ text: p.label, kind: "fail", perm: p.id });
     }
     if (desk.quiet) chips.push({ text: "Face only", kind: "warn" });
@@ -647,8 +650,10 @@ export function bootMacCompanion(opts: BootOptions = {}) {
         b.textContent = chip.text;
         b.title = "Open System Settings and grant access";
         b.addEventListener("click", () => {
+          if (chip.perm) dismissedPerms.add(chip.perm);
           if (pet) window.pet?.openPerm?.(chip.perm!);
           else showWhisper("On your Mac this opens System Settings so you can allow it.");
+          paintDeskChips();
         });
         deskEl.appendChild(b);
       } else {

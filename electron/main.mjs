@@ -10,7 +10,7 @@ import { buildDesk, detectMeetingState, detectMacScene, openAgent, scanGit } fro
 import { createPomo, EMPTY_DESK, formatRemain } from "./desk-core.mjs";
 import { grokBrief, grokEnv, grokStatus } from "./grok.mjs";
 import { readGrokBotApp } from "./grok-bot-app.mjs";
-import { openPerm, probePerms } from "./perms.mjs";
+import { openPerm, probePerms, resolvePerms } from "./perms.mjs";
 import {
   NUDGE_MS,
   OVERLAY_MS,
@@ -63,6 +63,7 @@ let wasQuiet = false;
 let pollTick = 0;
 let cachedGrok = { at: 0, value: { available: false, source: "none" } };
 let cachedPerms = { at: 0, value: EMPTY_DESK.perms };
+let dismissedPerms = new Set();
 let cachedGit = { at: 0, key: "", value: [] };
 let lastInboxMtime = 0;
 const meetingGate = createGate({ enterMs: 0, exitMs: 16_000 });
@@ -548,6 +549,19 @@ function runCmd(bin, args, timeout) {
   return runExec(bin, args, timeout).then((r) => (r.ok ? r.out : ""));
 }
 
+function runPermProbe(bin, args, timeout) {
+  return new Promise((resolve) => {
+    execFile(bin, args, { timeout, env: grokEnv() }, (err, stdout, stderr) => {
+      resolve({
+        ok: !err,
+        out: String(stdout || ""),
+        err: String(stderr || err?.message || ""),
+        timedOut: Boolean(err && (err.killed || err.code === "ETIMEDOUT")),
+      });
+    });
+  });
+}
+
 function latchAgents(agents, now) {
   const seen = new Set();
   const out = [];
@@ -818,14 +832,15 @@ async function pollDesk({ withCal = false } = {}) {
 
     const permTtl = cachedPerms.value?.missing?.length ? 20_000 : 90_000;
     if (now - cachedPerms.at > permTtl) {
-      const nextPerms = await probePerms(runCmd, { grokBotRunning: grokBot.processOn });
-      if (grokBot.processOn && grokBot.windowOk === false) {
-        nextPerms.grokBot = false;
-        if (!nextPerms.missing.some((m) => m.id === "grok-bot")) {
-          nextPerms.missing.push({ id: "grok-bot", label: "Allow Grok Bot" });
-        }
-      }
-      cachedPerms = { at: now, value: nextPerms };
+      const nextPerms = await probePerms(runPermProbe, {
+        grokBotRunning: grokBot.processOn,
+        sceneOk,
+        calendarProbed: Boolean(wantCal && calMaybe?.probed),
+      });
+      cachedPerms = {
+        at: now,
+        value: resolvePerms(nextPerms, { previous: cachedPerms.value, dismissed: dismissedPerms }),
+      };
     }
 
     const cwds = agents.map((a) => a.path).filter(Boolean);
@@ -1155,7 +1170,29 @@ ipcMain.on("pet-ack-agent", (_e, id) => {
   else ackedWaitKey = waitKey(lastCodex);
 });
 ipcMain.on("pet-open-perm", (_e, id) => {
-  if (typeof id === "string" && id) void openPerm(id, { runExec, runCmd });
+  if (typeof id !== "string" || !id) return;
+  dismissedPerms.add(id);
+  cachedPerms = {
+    at: 0,
+    value: resolvePerms(cachedPerms.value || EMPTY_DESK.perms, {
+      previous: cachedPerms.value,
+      dismissed: dismissedPerms,
+    }),
+  };
+  emitDesk(
+    buildDesk({
+      agents: lastDesk.agents,
+      meeting: lastDesk.meeting,
+      focus: lastDesk.focus,
+      git: lastDesk.git,
+      pomo: lastDesk.pomo,
+      grok: lastDesk.grok,
+      perms: cachedPerms.value,
+      quiet: lastDesk.quiet,
+    }),
+    { silent: true },
+  );
+  void openPerm(id, { runExec, runCmd });
 });
 
 ipcMain.on("pet-tray-icon", (_e, dataUrl) => {

@@ -3005,11 +3005,13 @@
         agentsEl.appendChild(b);
       }
     }
+    const dismissedPerms = /* @__PURE__ */ new Set();
     function paintDeskChips() {
       if (!deskEl) return;
       deskEl.replaceChildren();
       const chips = [];
       for (const p of desk.perms?.missing || []) {
+        if (dismissedPerms.has(p.id)) continue;
         chips.push({ text: p.label, kind: "fail", perm: p.id });
       }
       if (desk.quiet) chips.push({ text: "Face only", kind: "warn" });
@@ -3038,8 +3040,10 @@
           b.textContent = chip.text;
           b.title = "Open System Settings and grant access";
           b.addEventListener("click", () => {
+            if (chip.perm) dismissedPerms.add(chip.perm);
             if (pet) window.pet?.openPerm?.(chip.perm);
             else showWhisper("On your Mac this opens System Settings so you can allow it.");
+            paintDeskChips();
           });
           deskEl.appendChild(b);
         } else {

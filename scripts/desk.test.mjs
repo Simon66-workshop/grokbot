@@ -12,7 +12,7 @@ import {
 import { parseMeetingOut, buildDesk } from "../electron/desk.mjs";
 import { notifyCopy } from "../electron/codex.mjs";
 import { grokBotWaitingFromWindows, isGrokBotProcess } from "../electron/grok-bot-app.mjs";
-import { parsePermProbe } from "../electron/perms.mjs";
+import { classifyPermOut, parsePermProbe, probePerms, resolvePerms, unwrapPermCmd } from "../electron/perms.mjs";
 import { bannersQuiet, nextNudge, parseInbox, parseMacScene, parseNudgeUrl, waitKey } from "../electron/nudge.mjs";
 import { AGENT_RANK, createGate, createLatch, inWorkHoursHyst, soonHyst, stampMeeting, tickMeeting } from "../electron/hysteresis.mjs";
 
@@ -92,6 +92,8 @@ test("parseMeetingOut reads tab fields", () => {
   assert.equal(m.on, false);
   assert.equal(m.next?.minutes, 12);
   assert.equal(m.next?.title, "Design review");
+  assert.equal(m.probed, true);
+  assert.equal(parseMeetingOut("").probed, false);
 });
 
 test("buildDesk stamps a digest", () => {
@@ -119,16 +121,105 @@ test("Grok Bot waiting from Allow once window", () => {
   assert.equal(grokBotWaitingFromWindows("Chat"), false);
 });
 
-test("perm probe marks calendar missing", () => {
-  const p = parsePermProbe("", "1", "1", { grokBotRunning: false });
+test("perm probe marks calendar missing only on explicit deny", () => {
+  const p = parsePermProbe("0", "1", "1", { grokBotRunning: false });
   assert.equal(p.calendar, false);
+  assert.equal(p.states.calendar, "denied");
   assert.equal(p.missing[0].id, "calendar");
 });
 
-test("perm probe asks for Grok Bot control when the app is running", () => {
-  const p = parsePermProbe("1", "1", "", { grokBotRunning: true });
-  assert.equal(p.grokBot, false);
-  assert.ok(p.missing.some((m) => m.id === "grok-bot"));
+test("perm probe empty or timeout does not pin Allow chips", () => {
+  const empty = parsePermProbe("", "", "", { grokBotRunning: true });
+  assert.equal(empty.states.calendar, "unknown");
+  assert.equal(empty.states.automation, "unknown");
+  assert.equal(empty.missing.length, 0);
+  const timed = parsePermProbe("timeout", "ETIMEDOUT", "timeout", { grokBotRunning: true });
+  assert.equal(timed.missing.length, 0);
+  assert.equal(classifyPermOut(""), "unknown");
+  assert.equal(classifyPermOut("timeout"), "unknown");
+  assert.equal(unwrapPermCmd({ timedOut: true, out: "1" }), "timeout");
+});
+
+test("perm probe last-known-good survives timeout", () => {
+  const granted = parsePermProbe("1", "1", "1");
+  const unknown = parsePermProbe("timeout", "", "");
+  const merged = resolvePerms(unknown, { previous: granted });
+  assert.equal(merged.calendar, true);
+  assert.equal(merged.automation, true);
+  assert.equal(merged.missing.length, 0);
+});
+
+test("perm probe hides chips after this-session click", () => {
+  const denied = parsePermProbe("0", "0", "1");
+  const merged = resolvePerms(denied, { dismissed: ["calendar", "automation"] });
+  assert.ok(denied.missing.some((m) => m.id === "calendar"));
+  assert.equal(merged.missing.length, 0);
+});
+
+test("TCC denial text still shows Allow Calendar", () => {
+  const p = parsePermProbe(
+    "execution error: Not authorised to send Apple events to Calendar. (-1743)",
+    "1",
+    "1",
+  );
+  assert.equal(p.states.calendar, "denied");
+  assert.ok(p.missing.some((m) => m.id === "calendar"));
+});
+
+test("perm probe asks for Grok Bot control only when explicitly denied", () => {
+  const unknown = parsePermProbe("1", "1", "", { grokBotRunning: true });
+  assert.equal(unknown.grokBot, false);
+  assert.equal(unknown.missing.some((m) => m.id === "grok-bot"), false);
+  const denied = parsePermProbe("1", "1", "0", { grokBotRunning: true });
+  assert.equal(denied.grokBot, false);
+  assert.ok(denied.missing.some((m) => m.id === "grok-bot"));
+});
+
+test("probePerms treats empty runner output as unknown, not missing", async () => {
+  const calls = [];
+  const runCmd = async (_bin, args) => {
+    calls.push(args);
+    return "";
+  };
+  const p = await probePerms(runCmd, { grokBotRunning: true, force: true });
+  assert.equal(p.missing.length, 0);
+  assert.ok(calls.length > 0);
+});
+
+test("probePerms does not treat Calendar-not-running as missing", async () => {
+  const calls = [];
+  const runCmd = async (_bin, args) => {
+    const s = args.join(" ");
+    calls.push(s);
+    if (s.includes('exists process "Calendar"')) return "";
+    if (s.includes('tell application "Calendar"') && !s.includes("System Events")) {
+      throw new Error("must not launch Calendar when it is not running");
+    }
+    return "1";
+  };
+  const p = await probePerms(runCmd, { sceneOk: true, grokBotRunning: false, force: true });
+  assert.equal(p.automation, true);
+  assert.equal(p.states.calendar, "unknown");
+  assert.equal(p.missing.length, 0);
+  assert.ok(calls.some((s) => s.includes('exists process "Calendar"')));
+});
+
+test("probePerms can take granted evidence without extra osascript", async () => {
+  let calls = 0;
+  const runCmd = async () => {
+    calls += 1;
+    return "";
+  };
+  const p = await probePerms(runCmd, {
+    grokBotRunning: false,
+    sceneOk: true,
+    calendarProbed: true,
+    force: true,
+  });
+  assert.equal(p.calendar, true);
+  assert.equal(p.automation, true);
+  assert.equal(p.missing.length, 0);
+  assert.equal(calls, 0);
 });
 
 test("notifyCopy for Grok Bot approval", () => {

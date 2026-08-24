@@ -36,13 +36,13 @@ export async function detectMacScene(runCmd) {
 
 function parseMeetingOut(raw) {
   const text = String(raw || "").trim();
-  if (!text) return { on: false, next: null };
+  if (!text) return { on: false, next: null, probed: false };
   const [flag, mins, ...rest] = text.split("\t");
   const on = flag === "1";
   const minutes = Number(mins);
   const title = rest.join("\t").replace(/\s+/g, " ").trim().slice(0, 48);
   const next = Number.isFinite(minutes) && minutes >= 0 && title ? { title, minutes: Math.round(minutes) } : null;
-  return { on, next };
+  return { on, next, probed: true };
 }
 
 const MEETING_SCRIPT = `
