@@ -2,7 +2,7 @@
 
 export const PET_SIZES = {
   s: { box: 200, faceScale: 0.3 },
-  m: { box: 320, faceScale: 0.26 },
+  m: { box: 320, faceScale: 0.33 },
   l: { box: 440, faceScale: 0.24 },
 };
 

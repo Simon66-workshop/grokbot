@@ -104,8 +104,8 @@
       id: 0,
       name: "Rest",
       // Chubby ovals, generous gap — cute twins, not quotation marks.
-      left: e(-10, -15, 12.8, 17.6, 11),
-      right: e(50, -13, 11.8, 16.2, 11)
+      left: e(-28, -12, 15.6, 24.8, 4),
+      right: e(64, -10, 14.6, 23.2, 4)
     },
     {
       id: 1,
@@ -134,8 +134,8 @@
     {
       id: 5,
       name: "Joy",
-      left: e(-10, -6, 15.2, 28, 11),
-      right: e(52, -3, 14, 26, 11)
+      left: e(-26, -2, 16.8, 31, 4),
+      right: e(66, 0, 15.6, 29, 4)
     },
     {
       id: 6,
@@ -764,11 +764,11 @@
   }
   var MOOD_FACE = {
     idle: 0,
-    look: 14,
-    think: 9,
-    wait: 10,
+    look: 0,
+    think: 0,
+    wait: 0,
     joy: 5,
-    error: 17,
+    error: 0,
     play: 5,
     sleep: 7
   };
@@ -1328,7 +1328,7 @@
           this.blink();
           break;
         case "look":
-          this.setExpression(this.wantExpression || 14);
+          this.setExpression(this.wantExpression);
           this.tgt.faceW = 1;
           this.tgt.dotsW = 0;
           this.tgt.exclaimW = 0;
@@ -1438,7 +1438,7 @@
           this.stateUntil = this.elapsed + 1.5;
           break;
         case "think":
-          this.setExpression(this.wantExpression || 9);
+          this.setExpression(this.wantExpression === 0 ? 9 : this.wantExpression);
           this.tgt.orbitW = 1;
           this.tgt.eyeAlpha = 1;
           this.tgt.faceW = 1;
@@ -1524,9 +1524,8 @@
       const blink = this.t.blink.value;
       const leftT = { ...expr.left, h: expr.left.h * blink, alpha: expr.left.alpha };
       const rightT = { ...expr.right, h: expr.right.h * blink, alpha: expr.right.alpha };
-      const eyeSpeed = this.state === "bounce" ? speed * 0.82 : speed * 0.52;
-      stepEye(this.left, leftT, dt, eyeSpeed);
-      stepEye(this.right, rightT, dt, eyeSpeed);
+      stepEye(this.left, leftT, dt, speed);
+      stepEye(this.right, rightT, dt, speed);
       const bodyTarget = this.tgt.exclaimW > 0.55 ? exclaimStem() : bodyForShape(this.shape, this.elapsed);
       if (this.bodyCurr.length !== bodyTarget.length) {
         this.bodyCurr = bodyTarget.map((p) => ({ x: springOf(p.x), y: springOf(p.y) }));
@@ -1740,11 +1739,13 @@
       const scale = this.t.eyeScale.value * (this.emphasis ? 1.12 : 1);
       const pr = projectSphere(x, y, this.t.yaw.value, this.t.pitch.value, FACE_R);
       const foreshort = lerp(0.28, 1, pr.visible);
+      const oval = src.h >= src.w * 0.95;
+      const crushH = src.h * scale * lerp(oval ? 0.82 : 0.55, 1, pr.visible);
       const eye = {
         x: pr.x,
         y: pr.y,
         w: src.w * scale * foreshort,
-        h: src.h * scale * lerp(0.55, 1, pr.visible),
+        h: oval ? Math.max(crushH, src.w * scale * 0.95) : crushH,
         rot: (this.flipX ? -src.rot : src.rot) + this.t.yaw.value * 0.25,
         round: src.round,
         alpha: src.alpha * this.t.eyeAlpha.value * pr.visible
@@ -2179,7 +2180,7 @@
   var BOT_SIZES = {
     menubar: { box: 22, faceScale: 0.46, label: "Menu bar" },
     pet: { box: 200, faceScale: 0.3, label: "Small" },
-    medium: { box: 320, faceScale: 0.26, label: "Medium" },
+    medium: { box: 320, faceScale: 0.33, label: "Medium" },
     companion: { box: 440, faceScale: 0.24, label: "Large" },
     hero: { box: 720, faceScale: 0.22, label: "Hero" }
   };
@@ -2194,7 +2195,7 @@
   // src/lib/grokbot/layout.ts
   var PET_SIZES = {
     s: { box: 200, faceScale: 0.3, label: "S", hint: "Small \xB7 200" },
-    m: { box: 320, faceScale: 0.26, label: "M", hint: "Medium \xB7 320" },
+    m: { box: 320, faceScale: 0.33, label: "M", hint: "Medium \xB7 320" },
     l: { box: 440, faceScale: 0.24, label: "L", hint: "Large \xB7 440" }
   };
   var STAGE_W = 580;

@@ -34,8 +34,8 @@ export const EXPRESSIONS: ExpressionDef[] = [
     id: 0,
     name: "Rest",
     // Chubby ovals, generous gap — cute twins, not quotation marks.
-    left: e(-26, -14, 13.4, 20.2, 6),
-    right: e(60, -12, 12.4, 18.8, 6),
+    left: e(-28, -12, 15.6, 24.8, 4),
+    right: e(64, -10, 14.6, 23.2, 4),
   },
   {
     id: 1,
@@ -64,8 +64,8 @@ export const EXPRESSIONS: ExpressionDef[] = [
   {
     id: 5,
     name: "Joy",
-    left: e(-24, -4, 15.6, 28.5, 6),
-    right: e(62, -1, 14.4, 26.5, 6),
+    left: e(-26, -2, 16.8, 31, 4),
+    right: e(66, 0, 15.6, 29, 4),
   },
   {
     id: 6,

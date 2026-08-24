@@ -8,7 +8,7 @@ export const PET_SIZES: Record<
   { box: number; faceScale: number; label: string; hint: string }
 > = {
   s: { box: 200, faceScale: 0.3, label: "S", hint: "Small · 200" },
-  m: { box: 320, faceScale: 0.26, label: "M", hint: "Medium · 320" },
+  m: { box: 320, faceScale: 0.33, label: "M", hint: "Medium · 320" },
   l: { box: 440, faceScale: 0.24, label: "L", hint: "Large · 440" },
 };
 
