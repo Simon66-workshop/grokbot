@@ -26,7 +26,7 @@ bash scripts/handoff-audit.sh
 5. 确认 `ageStatus`、`tickMeeting`、`stampMeeting` 已导出  
 6. 确认 `grokbot` 协议在 `electron-builder.yml`  
 7. `npm run pet:bundle` 且 `mac/grokbot.js` 含 `exprHoldUntil`  
-8. `node scripts/desk-qa.mjs`：九个动作、Grok Bot · needs you、Allow Calendar  
+8. `node scripts/desk-qa.mjs`：8080 未就绪则先起 Vite；截图写在 `scripts/.desk-qa-shots`（不要 `/workspace`）；九个动作、Grok Bot · needs you、Allow Calendar  
 
 **失败 = 停。不要安装。** 把脚本 stdout 贴进 Codex 对话。
 
