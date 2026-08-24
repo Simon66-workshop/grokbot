@@ -1,6 +1,6 @@
 "use strict";
 (() => {
-  // ../../workspace/src/lib/grokbot/types.ts
+  // src/lib/grokbot/types.ts
   var PATH_N = 64;
   var EYE_N = 48;
   var FACE_R = 100;
@@ -8,7 +8,7 @@
   var GAZE_GAIN_X = 22;
   var GAZE_GAIN_Y = 14;
 
-  // ../../workspace/src/lib/grokbot/math.ts
+  // src/lib/grokbot/math.ts
   function clamp(v, a, b) {
     return Math.max(a, Math.min(b, v));
   }
@@ -89,7 +89,7 @@
     return out;
   }
 
-  // ../../workspace/src/lib/grokbot/expressions.ts
+  // src/lib/grokbot/expressions.ts
   var e = (x, y, w, h, deg, round = 1, alpha = 1) => ({
     x,
     y,
@@ -103,9 +103,9 @@
     {
       id: 0,
       name: "Rest",
-      // Official Grok Bot: compact circular dots, not giant ovals.
-      left: e(-20, -10, 7.2, 7.5, 0),
-      right: e(24, -9.5, 7, 7.3, 0)
+      // Smaller ovals than the pre-PR giants (22×26), not circular dots.
+      left: e(-22, -12, 14.8, 20.6, 4),
+      right: e(30, -11, 14.2, 19.8, 4)
     },
     {
       id: 1,
@@ -134,8 +134,8 @@
     {
       id: 5,
       name: "Joy",
-      left: e(-18, -6, 8.2, 8.8, 0),
-      right: e(22, -5.5, 8, 8.6, 0)
+      left: e(-20, -5, 13.6, 23.5, 4),
+      right: e(28, -4, 13, 22.5, 4)
     },
     {
       id: 6,
@@ -158,8 +158,8 @@
     {
       id: 9,
       name: "Focus",
-      left: e(-20, -9, 7, 7.3, 0),
-      right: e(24, -8.5, 8.2, 8.5, 0)
+      left: e(-20, -8, 11.2, 16, 4),
+      right: e(26, -7, 13.6, 18.8, 4)
     },
     {
       id: 10,
@@ -256,7 +256,7 @@
     return EXPRESSIONS[(id % 25 + 25) % 25];
   }
 
-  // ../../workspace/src/lib/grokbot/paths.ts
+  // src/lib/grokbot/paths.ts
   function stadiumPath(eye, n = EYE_N) {
     const pts = [];
     const hw = Math.max(0.4, eye.w);
@@ -346,7 +346,7 @@
     return resampleClosed(raw, PATH_N);
   }
 
-  // ../../workspace/src/lib/grokbot/shapes.ts
+  // src/lib/grokbot/shapes.ts
   function bodyForShape(shape, time = 0) {
     switch (shape) {
       case "circle":
@@ -365,7 +365,7 @@
     }
   }
 
-  // ../../workspace/src/lib/grokbot/demo.ts
+  // src/lib/grokbot/demo.ts
   var DEMO_CUES = [
     {
       at: 0,
@@ -593,7 +593,7 @@
     }
   ];
 
-  // ../../workspace/src/lib/grokbot/scenes.ts
+  // src/lib/grokbot/scenes.ts
   var SCENES = {
     work: {
       label: "Work",
@@ -654,7 +654,7 @@
     return v === "work" || v === "companion" || v === "demo";
   }
 
-  // ../../workspace/src/lib/grokbot/color.ts
+  // src/lib/grokbot/color.ts
   var GROK_BLUE = "#1b56f3";
   var INK = "#161513";
   var FACE_PRESETS = [
@@ -899,7 +899,7 @@
     ctx2.stroke();
   }
 
-  // ../../workspace/src/lib/grokbot/hysteresis.ts
+  // src/lib/grokbot/hysteresis.ts
   var MOOD_RANK = {
     idle: 0,
     look: 1,
@@ -947,7 +947,7 @@
     };
   }
 
-  // ../../workspace/src/lib/grokbot/engine.ts
+  // src/lib/grokbot/engine.ts
   var BOUNCE_DIRS = [
     { x: 0, y: 1, faces: [5, 3, 20, 10] },
     { x: 0, y: -0.42, faces: [4, 6, 7, 15] },
@@ -1801,7 +1801,7 @@
     }
   };
 
-  // ../../workspace/src/lib/grokbot/renderer.ts
+  // src/lib/grokbot/renderer.ts
   function drawPupil(ctx2, eye, side, lookX, lookY, alpha) {
     const inboard = side === "left" ? 1 : -1;
     const gx = clamp(lookX, -1, 1);
@@ -2179,7 +2179,7 @@
     ctx2.restore();
   }
 
-  // ../../workspace/src/lib/grokbot/sfx.ts
+  // src/lib/grokbot/sfx.ts
   var MUTE_KEY = "grok-sfx-muted";
   var ctx = null;
   var muted = readMuted();
@@ -2245,7 +2245,7 @@
     }
   }
 
-  // ../../workspace/src/lib/grokbot/sizes.ts
+  // src/lib/grokbot/sizes.ts
   var BOT_SIZES = {
     menubar: { box: 22, faceScale: 0.46, label: "Menu bar" },
     pet: { box: 200, faceScale: 0.3, label: "Small" },
@@ -2254,14 +2254,14 @@
     hero: { box: 720, faceScale: 0.22, label: "Hero" }
   };
 
-  // ../../workspace/src/lib/grokbot/registry.ts
+  // src/lib/grokbot/registry.ts
   var stack = [];
   function registerEngine(engine) {
     if (engine) stack.push(engine);
     else stack.pop();
   }
 
-  // ../../workspace/src/lib/grokbot/layout.ts
+  // src/lib/grokbot/layout.ts
   var PET_SIZES = {
     s: { box: 200, faceScale: 0.3, label: "S", hint: "Small \xB7 200" },
     m: { box: 320, faceScale: 0.33, label: "M", hint: "Medium \xB7 320" },
@@ -2355,7 +2355,7 @@
     return m >= 9 * 60 && m < 18 * 60;
   }
 
-  // ../../workspace/src/lib/grokbot/desk-core.js
+  // src/lib/grokbot/desk-core.js
   var EMPTY_POMO = {
     running: false,
     phase: "idle",
@@ -2514,7 +2514,7 @@
     return { snap, toggle, skip, tick, begin };
   }
 
-  // ../../workspace/src/lib/grokbot/pet-shell.ts
+  // src/lib/grokbot/pet-shell.ts
   var HOLD_MS = 220;
   var TAP_MS = 280;
   var DBL_MS = 340;
@@ -3926,6 +3926,6 @@
     };
   }
 
-  // ../../workspace/mac/companion.ts
+  // mac/companion.ts
   bootMacCompanion();
 })();
