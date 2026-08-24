@@ -18,6 +18,7 @@
   "include": [
     "src/lib/grokbot",
     "src/vite-env.d.ts",
+    "src/main.tsx",
     "src/components/desktop",
     "mac/companion.ts"
   ]
