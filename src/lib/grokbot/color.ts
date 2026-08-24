@@ -144,11 +144,11 @@ export function moodTint(homeHex: string, moodHex: string | null, amount: number
 
 export const MOOD_FACE: Record<MoodId, number> = {
   idle: 0,
-  look: 14,
-  think: 9,
-  wait: 10,
+  look: 0,
+  think: 0,
+  wait: 0,
   joy: 5,
-  error: 17,
+  error: 0,
   play: 5,
   sleep: 7,
 };

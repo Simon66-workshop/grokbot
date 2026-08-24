@@ -506,7 +506,7 @@ export class GrokBotEngine {
         this.blink();
         break;
       case "look":
-        this.setExpression(this.wantExpression || 14);
+        this.setExpression(this.wantExpression);
         this.tgt.faceW = 1;
         this.tgt.dotsW = 0;
         this.tgt.exclaimW = 0;
@@ -616,7 +616,7 @@ export class GrokBotEngine {
         this.stateUntil = this.elapsed + 1.5;
         break;
       case "think":
-        this.setExpression(this.wantExpression || 9);
+        this.setExpression(this.wantExpression === 0 ? 9 : this.wantExpression);
         this.tgt.orbitW = 1;
         this.tgt.eyeAlpha = 1;
         this.tgt.faceW = 1;
@@ -710,9 +710,8 @@ export class GrokBotEngine {
     const blink = this.t.blink.value;
     const leftT = { ...expr.left, h: expr.left.h * blink, alpha: expr.left.alpha };
     const rightT = { ...expr.right, h: expr.right.h * blink, alpha: expr.right.alpha };
-    const eyeSpeed = this.state === "bounce" ? speed * 0.82 : speed * 0.52;
-    stepEye(this.left, leftT, dt, eyeSpeed);
-    stepEye(this.right, rightT, dt, eyeSpeed);
+    stepEye(this.left, leftT, dt, speed);
+    stepEye(this.right, rightT, dt, speed);
 
     const bodyTarget = this.tgt.exclaimW > 0.55 ? exclaimStem() : bodyForShape(this.shape, this.elapsed);
     if (this.bodyCurr.length !== bodyTarget.length) {
@@ -969,11 +968,13 @@ export class GrokBotEngine {
     const scale = this.t.eyeScale.value * (this.emphasis ? 1.12 : 1);
     const pr = projectSphere(x, y, this.t.yaw.value, this.t.pitch.value, FACE_R);
     const foreshort = lerp(0.28, 1, pr.visible);
+    const oval = src.h >= src.w * 0.95;
+    const crushH = src.h * scale * lerp(oval ? 0.82 : 0.55, 1, pr.visible);
     const eye: EyeParams = {
       x: pr.x,
       y: pr.y,
       w: src.w * scale * foreshort,
-      h: src.h * scale * lerp(0.55, 1, pr.visible),
+      h: oval ? Math.max(crushH, src.w * scale * 0.95) : crushH,
       rot: (this.flipX ? -src.rot : src.rot) + this.t.yaw.value * 0.25,
       round: src.round,
       alpha: src.alpha * this.t.eyeAlpha.value * pr.visible,
