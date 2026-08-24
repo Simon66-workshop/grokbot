@@ -202,7 +202,7 @@ const THEME: ThemeColors = {
   ink: "#161513",
   paper: "#f3f1ea",
   grok: "#1b56f3",
-  eye: "#fffdf8",
+  eye: "#141414",
   muted: "#6e6a62",
 };
 

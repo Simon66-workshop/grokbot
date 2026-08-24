@@ -943,8 +943,8 @@ export class GrokBotEngine {
       this.tgt.gazeX = this.pointer.x;
       this.tgt.gazeY = this.pointer.y;
       if (this.state !== "bounce") {
-        this.tgt.yaw = this.pointer.x * 0.48;
-        this.tgt.pitch = this.pointer.y * 0.32;
+        this.tgt.yaw = this.pointer.x * 0.2;
+        this.tgt.pitch = this.pointer.y * 0.14;
       }
     } else if (policy.autoLook && this.autoIdle && this.state === "idle" && !this.demoPlaying) {
       const t = this.elapsed;
@@ -980,7 +980,27 @@ export class GrokBotEngine {
       round: src.round,
       alpha: src.alpha * this.t.eyeAlpha.value * pr.visible,
     };
-    return { eye, depth: pr.z, path: stadiumPath(eye), visible: pr.visible };
+    return { eye, depth: pr.z, path: stadiumPath(eye), visible: pr.visible, side };
+  }
+
+  projectedEyes() {
+    const left = this.projectedEye("left");
+    const right = this.projectedEye("right");
+    const dx = right.eye.x - left.eye.x;
+    const dy = right.eye.y - left.eye.y;
+    const dist = Math.hypot(dx, dy);
+    const minGap = Math.max(36, 0.65 * (left.eye.w + right.eye.w));
+    if (dist >= minGap) return { left, right };
+    const nx = dist < 1e-4 ? 1 : dx / dist;
+    const ny = dist < 1e-4 ? 0 : dy / dist;
+    const push = (minGap - dist) / 2;
+    left.eye.x -= nx * push;
+    left.eye.y -= ny * push;
+    right.eye.x += nx * push;
+    right.eye.y += ny * push;
+    left.path = stadiumPath(left.eye);
+    right.path = stadiumPath(right.eye);
+    return { left, right };
   }
 
   snapshot(): EngineSnapshot {

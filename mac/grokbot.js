@@ -1716,8 +1716,8 @@
         this.tgt.gazeX = this.pointer.x;
         this.tgt.gazeY = this.pointer.y;
         if (this.state !== "bounce") {
-          this.tgt.yaw = this.pointer.x * 0.48;
-          this.tgt.pitch = this.pointer.y * 0.32;
+          this.tgt.yaw = this.pointer.x * 0.2;
+          this.tgt.pitch = this.pointer.y * 0.14;
         }
       } else if (policy.autoLook && this.autoIdle && this.state === "idle" && !this.demoPlaying) {
         const t = this.elapsed;
@@ -1751,7 +1751,26 @@
         round: src.round,
         alpha: src.alpha * this.t.eyeAlpha.value * pr.visible
       };
-      return { eye, depth: pr.z, path: stadiumPath(eye), visible: pr.visible };
+      return { eye, depth: pr.z, path: stadiumPath(eye), visible: pr.visible, side };
+    }
+    projectedEyes() {
+      const left = this.projectedEye("left");
+      const right = this.projectedEye("right");
+      const dx = right.eye.x - left.eye.x;
+      const dy = right.eye.y - left.eye.y;
+      const dist2 = Math.hypot(dx, dy);
+      const minGap = Math.max(36, 0.65 * (left.eye.w + right.eye.w));
+      if (dist2 >= minGap) return { left, right };
+      const nx = dist2 < 1e-4 ? 1 : dx / dist2;
+      const ny = dist2 < 1e-4 ? 0 : dy / dist2;
+      const push = (minGap - dist2) / 2;
+      left.eye.x -= nx * push;
+      left.eye.y -= ny * push;
+      right.eye.x += nx * push;
+      right.eye.y += ny * push;
+      left.path = stadiumPath(left.eye);
+      right.path = stadiumPath(right.eye);
+      return { left, right };
     }
     snapshot() {
       return {
@@ -1783,6 +1802,34 @@
   };
 
   // src/lib/grokbot/renderer.ts
+  function drawPupil(ctx2, eye, side, lookX, lookY, alpha) {
+    const inboard = side === "left" ? 1 : -1;
+    const gx = clamp(lookX, -1, 1);
+    const gy = clamp(lookY, -1, 1);
+    const px = eye.x + inboard * eye.w * 0.08 + gx * eye.w * 0.16;
+    const py = eye.y + gy * eye.h * 0.14;
+    ctx2.save();
+    ctx2.globalAlpha = alpha;
+    ctx2.translate(px, py);
+    ctx2.rotate(eye.rot);
+    ctx2.fillStyle = "#0a0a0a";
+    ctx2.beginPath();
+    ctx2.ellipse(0, 0, Math.max(2.2, eye.w * 0.28), Math.max(2.8, eye.h * 0.32), 0, 0, Math.PI * 2);
+    ctx2.fill();
+    ctx2.fillStyle = "#fffdf8";
+    ctx2.beginPath();
+    ctx2.ellipse(
+      inboard * eye.w * 0.1 - gx * 0.4,
+      -eye.h * 0.16 - gy * 0.3,
+      Math.max(1.1, eye.w * 0.09),
+      Math.max(1, eye.h * 0.07),
+      0,
+      0,
+      Math.PI * 2
+    );
+    ctx2.fill();
+    ctx2.restore();
+  }
   function fillPath(ctx2, pts) {
     if (!pts.length) return;
     ctx2.beginPath();
@@ -1852,9 +1899,8 @@
       ctx2.beginPath();
       ctx2.arc(0, 0, FACE_R * 0.96, 0, Math.PI * 2);
       ctx2.clip();
-      const L = engine.projectedEye("left");
-      const R = engine.projectedEye("right");
-      const eyes = L.depth <= R.depth ? [L, R] : [R, L];
+      const { left, right } = engine.projectedEyes();
+      const eyes = left.depth <= right.depth ? [left, right] : [right, left];
       for (const eye of eyes) {
         if (eye.eye.alpha < 0.02) continue;
         const a = clamp(eye.eye.alpha * faceW, 0, 1);
@@ -1862,6 +1908,7 @@
         fillPath(ctx2, eye.path);
         ctx2.fillStyle = eyeFill;
         ctx2.fill();
+        drawPupil(ctx2, eye.eye, eye.side, lookX, lookY, a);
       }
       ctx2.restore();
       ctx2.globalAlpha = 1;
@@ -2096,9 +2143,8 @@
     ctx2.beginPath();
     ctx2.arc(0, 0, FACE_R, 0, Math.PI * 2);
     ctx2.stroke();
-    const L = engine.projectedEye("left");
-    const R = engine.projectedEye("right");
-    for (const eye of [L, R]) {
+    const { left, right } = engine.projectedEyes();
+    for (const eye of [left, right]) {
       ctx2.beginPath();
       ctx2.arc(eye.eye.x, eye.eye.y, 3.2, 0, Math.PI * 2);
       ctx2.fillStyle = theme.grok;
@@ -2583,7 +2629,7 @@
     ink: "#161513",
     paper: "#f3f1ea",
     grok: "#1b56f3",
-    eye: "#fffdf8",
+    eye: "#141414",
     muted: "#6e6a62"
   };
   var ACTIONS = [

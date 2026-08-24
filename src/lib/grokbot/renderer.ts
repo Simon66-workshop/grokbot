@@ -12,6 +12,42 @@ export type ThemeColors = {
   muted: string;
 };
 
+function drawPupil(
+  ctx: CanvasRenderingContext2D,
+  eye: { x: number; y: number; w: number; h: number; rot: number },
+  side: "left" | "right",
+  lookX: number,
+  lookY: number,
+  alpha: number,
+) {
+  const inboard = side === "left" ? 1 : -1;
+  const gx = clamp(lookX, -1, 1);
+  const gy = clamp(lookY, -1, 1);
+  const px = eye.x + inboard * eye.w * 0.08 + gx * eye.w * 0.16;
+  const py = eye.y + gy * eye.h * 0.14;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(px, py);
+  ctx.rotate(eye.rot);
+  ctx.fillStyle = "#0a0a0a";
+  ctx.beginPath();
+  ctx.ellipse(0, 0, Math.max(2.2, eye.w * 0.28), Math.max(2.8, eye.h * 0.32), 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#fffdf8";
+  ctx.beginPath();
+  ctx.ellipse(
+    inboard * eye.w * 0.1 - gx * 0.4,
+    -eye.h * 0.16 - gy * 0.3,
+    Math.max(1.1, eye.w * 0.09),
+    Math.max(1.0, eye.h * 0.07),
+    0,
+    0,
+    Math.PI * 2,
+  );
+  ctx.fill();
+  ctx.restore();
+}
+
 function fillPath(ctx: CanvasRenderingContext2D, pts: Point[]) {
   if (!pts.length) return;
   ctx.beginPath();
@@ -100,9 +136,8 @@ export function drawGrokBot(
     ctx.beginPath();
     ctx.arc(0, 0, FACE_R * 0.96, 0, Math.PI * 2);
     ctx.clip();
-    const L = engine.projectedEye("left");
-    const R = engine.projectedEye("right");
-    const eyes = L.depth <= R.depth ? [L, R] : [R, L];
+    const { left, right } = engine.projectedEyes();
+    const eyes = left.depth <= right.depth ? [left, right] : [right, left];
     for (const eye of eyes) {
       if (eye.eye.alpha < 0.02) continue;
       const a = clamp(eye.eye.alpha * faceW, 0, 1);
@@ -110,6 +145,7 @@ export function drawGrokBot(
       fillPath(ctx, eye.path);
       ctx.fillStyle = eyeFill;
       ctx.fill();
+      drawPupil(ctx, eye.eye, eye.side, lookX, lookY, a);
     }
     ctx.restore();
     ctx.globalAlpha = 1;
@@ -411,9 +447,8 @@ function drawDebug(
   ctx.arc(0, 0, FACE_R, 0, Math.PI * 2);
   ctx.stroke();
 
-  const L = engine.projectedEye("left");
-  const R = engine.projectedEye("right");
-  for (const eye of [L, R]) {
+  const { left, right } = engine.projectedEyes();
+  for (const eye of [left, right]) {
     ctx.beginPath();
     ctx.arc(eye.eye.x, eye.eye.y, 3.2, 0, Math.PI * 2);
     ctx.fillStyle = theme.grok;
