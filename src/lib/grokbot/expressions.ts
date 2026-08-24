@@ -34,8 +34,8 @@ export const EXPRESSIONS: ExpressionDef[] = [
     id: 0,
     name: "Rest",
     // Official Grok Bot: compact circular dots, not giant ovals.
-    left: e(-22, -10, 10.6, 11, 0),
-    right: e(26, -9.5, 10.3, 10.7, 0),
+    left: e(-20, -10, 7.2, 7.5, 0),
+    right: e(24, -9.5, 7.0, 7.3, 0),
   },
   {
     id: 1,
@@ -64,8 +64,8 @@ export const EXPRESSIONS: ExpressionDef[] = [
   {
     id: 5,
     name: "Joy",
-    left: e(-20, -6, 12, 13.2, 0),
-    right: e(24, -5.5, 11.6, 12.8, 0),
+    left: e(-18, -6, 8.2, 8.8, 0),
+    right: e(22, -5.5, 8.0, 8.6, 0),
   },
   {
     id: 6,
@@ -88,8 +88,8 @@ export const EXPRESSIONS: ExpressionDef[] = [
   {
     id: 9,
     name: "Focus",
-    left: e(-8, 4, 14, 16, -8, 1),
-    right: e(22, 2, 22, 22, 0, 1),
+    left: e(-20, -9, 7.0, 7.3, 0),
+    right: e(24, -8.5, 8.2, 8.5, 0),
   },
   {
     id: 10,

@@ -104,8 +104,8 @@
       id: 0,
       name: "Rest",
       // Official Grok Bot: compact circular dots, not giant ovals.
-      left: e(-22, -10, 10.6, 11, 0),
-      right: e(26, -9.5, 10.3, 10.7, 0)
+      left: e(-20, -10, 7.2, 7.5, 0),
+      right: e(24, -9.5, 7, 7.3, 0)
     },
     {
       id: 1,
@@ -134,8 +134,8 @@
     {
       id: 5,
       name: "Joy",
-      left: e(-20, -6, 12, 13.2, 0),
-      right: e(24, -5.5, 11.6, 12.8, 0)
+      left: e(-18, -6, 8.2, 8.8, 0),
+      right: e(22, -5.5, 8, 8.6, 0)
     },
     {
       id: 6,
@@ -158,8 +158,8 @@
     {
       id: 9,
       name: "Focus",
-      left: e(-8, 4, 14, 16, -8, 1),
-      right: e(22, 2, 22, 22, 0, 1)
+      left: e(-20, -9, 7, 7.3, 0),
+      right: e(24, -8.5, 8.2, 8.5, 0)
     },
     {
       id: 10,
@@ -1814,15 +1814,15 @@
     ctx2.rotate(eye.rot);
     ctx2.fillStyle = "#0a0a0a";
     ctx2.beginPath();
-    ctx2.ellipse(0, 0, Math.max(2.2, eye.w * 0.28), Math.max(2.8, eye.h * 0.32), 0, 0, Math.PI * 2);
+    ctx2.ellipse(0, 0, Math.max(1.2, eye.w * 0.28), Math.max(1.3, eye.h * 0.32), 0, 0, Math.PI * 2);
     ctx2.fill();
     ctx2.fillStyle = "#fffdf8";
     ctx2.beginPath();
     ctx2.ellipse(
       inboard * eye.w * 0.1 - gx * 0.4,
       -eye.h * 0.16 - gy * 0.3,
-      Math.max(1.1, eye.w * 0.09),
-      Math.max(1, eye.h * 0.07),
+      Math.max(0.7, eye.w * 0.11),
+      Math.max(0.65, eye.h * 0.09),
       0,
       0,
       Math.PI * 2

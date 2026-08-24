@@ -31,15 +31,15 @@ function drawPupil(
   ctx.rotate(eye.rot);
   ctx.fillStyle = "#0a0a0a";
   ctx.beginPath();
-  ctx.ellipse(0, 0, Math.max(2.2, eye.w * 0.28), Math.max(2.8, eye.h * 0.32), 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 0, Math.max(1.2, eye.w * 0.28), Math.max(1.3, eye.h * 0.32), 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = "#fffdf8";
   ctx.beginPath();
   ctx.ellipse(
     inboard * eye.w * 0.1 - gx * 0.4,
     -eye.h * 0.16 - gy * 0.3,
-    Math.max(1.1, eye.w * 0.09),
-    Math.max(1.0, eye.h * 0.07),
+    Math.max(0.7, eye.w * 0.11),
+    Math.max(0.65, eye.h * 0.09),
     0,
     0,
     Math.PI * 2,
