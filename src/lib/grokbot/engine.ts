@@ -969,12 +969,13 @@ export class GrokBotEngine {
     const pr = projectSphere(x, y, this.t.yaw.value, this.t.pitch.value, FACE_R);
     const foreshort = lerp(0.28, 1, pr.visible);
     const oval = src.h >= src.w * 0.95;
-    const crushH = src.h * scale * lerp(oval ? 0.82 : 0.55, 1, pr.visible);
+    const crushH = src.h * scale * lerp(oval ? 0.88 : 0.55, 1, pr.visible);
+    const crushW = src.w * scale * (oval ? lerp(0.88, 1, pr.visible) : foreshort);
     const eye: EyeParams = {
       x: pr.x,
       y: pr.y,
-      w: src.w * scale * foreshort,
-      h: oval ? Math.max(crushH, src.w * scale * 0.95) : crushH,
+      w: oval ? Math.max(crushW, src.w * scale * 0.88) : crushW,
+      h: oval ? Math.max(crushH, src.h * scale * 0.88) : crushH,
       rot: (this.flipX ? -src.rot : src.rot) + this.t.yaw.value * 0.25,
       round: src.round,
       alpha: src.alpha * this.t.eyeAlpha.value * pr.visible,

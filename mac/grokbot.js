@@ -104,8 +104,8 @@
       id: 0,
       name: "Rest",
       // Chubby ovals, generous gap — cute twins, not quotation marks.
-      left: e(-10, -15, 12.8, 17.6, 11),
-      right: e(50, -13, 11.8, 16.2, 11)
+      left: e(-20, -12, 22, 26, 2),
+      right: e(44, -11, 21.5, 25.5, 2)
     },
     {
       id: 1,
@@ -134,8 +134,8 @@
     {
       id: 5,
       name: "Joy",
-      left: e(-10, -6, 15.2, 28, 11),
-      right: e(52, -3, 14, 26, 11)
+      left: e(-16, -4, 20, 32, 2),
+      right: e(42, -3, 19.5, 31, 2)
     },
     {
       id: 6,
@@ -1740,12 +1740,13 @@
       const pr = projectSphere(x, y, this.t.yaw.value, this.t.pitch.value, FACE_R);
       const foreshort = lerp(0.28, 1, pr.visible);
       const oval = src.h >= src.w * 0.95;
-      const crushH = src.h * scale * lerp(oval ? 0.82 : 0.55, 1, pr.visible);
+      const crushH = src.h * scale * lerp(oval ? 0.88 : 0.55, 1, pr.visible);
+      const crushW = src.w * scale * (oval ? lerp(0.88, 1, pr.visible) : foreshort);
       const eye = {
         x: pr.x,
         y: pr.y,
-        w: src.w * scale * foreshort,
-        h: oval ? Math.max(crushH, src.w * scale * 0.95) : crushH,
+        w: oval ? Math.max(crushW, src.w * scale * 0.88) : crushW,
+        h: oval ? Math.max(crushH, src.h * scale * 0.88) : crushH,
         rot: (this.flipX ? -src.rot : src.rot) + this.t.yaw.value * 0.25,
         round: src.round,
         alpha: src.alpha * this.t.eyeAlpha.value * pr.visible
