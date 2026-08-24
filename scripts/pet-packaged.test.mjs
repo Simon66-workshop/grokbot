@@ -117,3 +117,14 @@ test("control dock still never auto-opens; overlay IPC is explicit", () => {
   assert.match(bundled, /setDock/);
   assert.match(bundled, /setOverlay/);
 });
+
+test("app icon meets electron-builder 26 mac minimum of 512", () => {
+  const png = readFileSync(new URL("../assets/icon.png", import.meta.url));
+  assert.equal(png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])), true);
+  const width = png.readUInt32BE(16);
+  const height = png.readUInt32BE(20);
+  assert.ok(width >= 512, `icon width ${width} < 512`);
+  assert.ok(height >= 512, `icon height ${height} < 512`);
+  const yml = readFileSync(new URL("../electron-builder.yml", import.meta.url), "utf8");
+  assert.match(yml, /^ {2}icon: assets\/icon\.png$/m);
+});
