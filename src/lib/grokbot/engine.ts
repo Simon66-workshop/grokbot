@@ -17,6 +17,8 @@ import { bodyForShape } from "./shapes";
 import { exclaimStem, stadiumPath } from "./paths";
 import { DEMO_CUES } from "./demo";
 import { SCENES, writeScene, type SceneId } from "./scenes";
+import { canEnterState, hsvToHex, moodBlend, moodTint, resolveFaceHex, MOOD_FACE, type MoodId } from "./color";
+import { createLatch, MOOD_RANK } from "./hysteresis";
 
 type BounceCue = {
   at: number;
@@ -184,6 +186,13 @@ export class GrokBotEngine {
   shape: ShapeId = "circle";
   state: StateId = "idle";
   faceColor: FaceColor = "blue";
+  mood: MoodId = "idle";
+  wantExpression = 0;
+  exprHoldUntil = 0;
+  shownH = 227;
+  shownS = 0.89;
+  shownV = 0.953;
+  private moodHold = createLatch({ rank: MOOD_RANK, enterMs: 0, exitMs: 1800 });
   springSpeed = 7;
   flipX = false;
   emphasis = false;
@@ -330,9 +339,11 @@ export class GrokBotEngine {
     this.goIdle();
   }
 
-  setExpression(id: number) {
-    this.expression = ((id % 25) + 25) % 25;
-    if (this.state === "sleep") this.goIdle();
+  setExpression(id: number, opts: { hold?: number } = {}) {
+    const next = ((id % 25) + 25) % 25;
+    this.expression = next;
+    if (opts.hold && opts.hold > 0) this.exprHoldUntil = this.elapsed + opts.hold;
+    if (this.state === "sleep" && next !== 7) this.goIdle();
   }
 
   setShape(id: ShapeId) {
@@ -375,6 +386,20 @@ export class GrokBotEngine {
     this.faceColor = c;
   }
 
+  setMood(id: MoodId) {
+    const held = this.moodHold.sample(id, this.elapsed * 1000) as MoodId;
+    const same = this.mood === held;
+    this.mood = held;
+    this.wantExpression = MOOD_FACE[held] ?? 0;
+    if (same) return;
+    if (this.state === "idle") this.setExpression(this.wantExpression);
+    if (held === "idle") this.touchedAt = this.elapsed;
+  }
+
+  get displayColor() {
+    return hsvToHex(this.shownH, this.shownS, this.shownV);
+  }
+
   setFollowPointer(v: boolean) {
     this.followPointer = v;
     if (!v) this.pointer.active = false;
@@ -410,7 +435,7 @@ export class GrokBotEngine {
   wake() {
     if (this.state !== "sleep") return;
     this.goIdle();
-    this.expression = 0;
+    this.setExpression(this.wantExpression);
   }
 
   setPaused(on: boolean) {
@@ -421,6 +446,10 @@ export class GrokBotEngine {
   reset() {
     this.stopDemo();
     this.goIdle();
+    this.mood = "idle";
+    this.wantExpression = 0;
+    this.moodHold.reset("idle", this.elapsed * 1000);
+    this.exprHoldUntil = 0;
     this.expression = 0;
     this.shape = "circle";
     this.tgt = this.defaultTargets();
@@ -462,7 +491,9 @@ export class GrokBotEngine {
     this.stateUntil = 0;
   }
 
-  play(state: StateId) {
+  play(state: StateId, opts: { force?: boolean } = {}) {
+    if (!canEnterState(this.state, state, opts.force)) return;
+    this.exprHoldUntil = 0;
     this.state = state;
     this.tgt.flyX = 0;
     this.tgt.flyY = 0;
@@ -475,6 +506,7 @@ export class GrokBotEngine {
         this.blink();
         break;
       case "look":
+        this.setExpression(this.wantExpression || 14);
         this.tgt.faceW = 1;
         this.tgt.dotsW = 0;
         this.tgt.exclaimW = 0;
@@ -493,6 +525,7 @@ export class GrokBotEngine {
         this.stateUntil = this.elapsed + 2.4;
         break;
       case "exclaim":
+        this.setExpression(10);
         this.tgt.faceW = 0;
         this.tgt.dotsW = 0;
         this.tgt.exclaimW = 1;
@@ -511,7 +544,7 @@ export class GrokBotEngine {
         this.stateUntil = this.elapsed + 1.4;
         break;
       case "focus":
-        this.expression = 9;
+        this.setExpression(9);
         this.tgt.faceW = 1;
         this.tgt.dotsW = 0;
         this.tgt.exclaimW = 0;
@@ -568,7 +601,7 @@ export class GrokBotEngine {
         this.stateUntil = this.elapsed + 1.8;
         break;
       case "sleep":
-        this.expression = 7;
+        this.setExpression(7);
         this.tgt.faceW = 1;
         this.tgt.eyeAlpha = 1;
         this.tgt.bodyScale = 1;
@@ -583,6 +616,7 @@ export class GrokBotEngine {
         this.stateUntil = this.elapsed + 1.5;
         break;
       case "think":
+        this.setExpression(this.wantExpression || 9);
         this.tgt.orbitW = 1;
         this.tgt.eyeAlpha = 1;
         this.tgt.faceW = 1;
@@ -599,7 +633,7 @@ export class GrokBotEngine {
         this.tgt.bodyScale = 1;
         this.tgt.flyX = 0;
         this.tgt.flyY = 0;
-        this.expression = 5;
+        this.setExpression(5);
         this.rollBounce();
         this.bounceT0 = this.elapsed;
         this.bounceHold = true;
@@ -609,7 +643,7 @@ export class GrokBotEngine {
   }
 
   bounceOnce() {
-    this.play("bounce");
+    this.play("bounce", { force: true });
     this.bounceHold = false;
     this.stateUntil = this.elapsed + this.bounceDur;
   }
@@ -670,13 +704,15 @@ export class GrokBotEngine {
     this.tickDemo();
     this.tickBehaviors(dt);
     this.tickGaze();
+    this.tickColor(dt);
 
     const expr = getExpression(this.expression);
     const blink = this.t.blink.value;
     const leftT = { ...expr.left, h: expr.left.h * blink, alpha: expr.left.alpha };
     const rightT = { ...expr.right, h: expr.right.h * blink, alpha: expr.right.alpha };
-    stepEye(this.left, leftT, dt, speed);
-    stepEye(this.right, rightT, dt, speed);
+    const eyeSpeed = this.state === "bounce" ? speed * 0.82 : speed * 0.52;
+    stepEye(this.left, leftT, dt, eyeSpeed);
+    stepEye(this.right, rightT, dt, eyeSpeed);
 
     const bodyTarget = this.tgt.exclaimW > 0.55 ? exclaimStem() : bodyForShape(this.shape, this.elapsed);
     if (this.bodyCurr.length !== bodyTarget.length) {
@@ -727,6 +763,16 @@ export class GrokBotEngine {
     }
   }
 
+  private tickColor(dt: number) {
+    const home = resolveFaceHex(this.faceColor);
+    const blend = moodBlend(this.mood, this.state, this.expression);
+    const target = moodTint(home, blend.hex, blend.amount);
+    const k = 1 - Math.exp(-dt * (this.state === "bounce" ? 4.2 : 2.6));
+    this.shownH = ((this.shownH + (((target.h - this.shownH + 540) % 360) - 180) * k) + 360) % 360;
+    this.shownS += (target.s - this.shownS) * k;
+    this.shownV += (target.v - this.shownV) * k;
+  }
+
   private tickDemo() {
     if (!this.demoPlaying) return;
     const t = this.elapsed - this.demoT0;
@@ -755,6 +801,16 @@ export class GrokBotEngine {
     }
     if (this.state === "sleep" && !this.reducedMotion) {
       this.tgt.bodyScale = 1 + Math.sin(this.elapsed * 0.7) * 0.012;
+    }
+    if (this.mood !== "idle") this.touchedAt = Math.max(this.touchedAt, this.elapsed - 8);
+    if (this.exprHoldUntil && this.elapsed >= this.exprHoldUntil) this.exprHoldUntil = 0;
+    if (
+      this.state === "idle" &&
+      this.expression !== this.wantExpression &&
+      !this.demoPlaying &&
+      this.elapsed >= this.exprHoldUntil
+    ) {
+      this.setExpression(this.wantExpression);
     }
 
     if (this.state === "blink" && this.elapsed > this.stateUntil) {
@@ -787,6 +843,7 @@ export class GrokBotEngine {
     if (
       this.autoIdle &&
       this.state === "idle" &&
+      this.mood === "idle" &&
       !this.demoPlaying &&
       this.elapsed > this.nextBlink
     ) {
@@ -839,6 +896,7 @@ export class GrokBotEngine {
         this.tgt.streakW = 0;
         this.tgt.satW = 0;
         this.state = "idle";
+        this.setExpression(this.wantExpression);
         this.nextBlink = this.elapsed + 2.2 + Math.random() * 2;
       }
     }
@@ -867,7 +925,7 @@ export class GrokBotEngine {
     this.tgt.squash = cue.squash;
     this.tgt.yaw = cue.tilt;
     this.tgt.bodyScale = 1;
-    if (this.expression !== cue.expression) this.expression = cue.expression;
+    if (this.expression !== cue.expression) this.setExpression(cue.expression);
     const air = Math.hypot(cue.hopX, cue.hopY) > 0.12;
     if (this.lastAir && !air) this.emit("land");
     this.lastAir = air;

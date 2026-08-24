@@ -12,6 +12,7 @@ import {
   statusLabel,
   notifyCopy,
   mergeStatus,
+  ageStatus,
 } from "../electron/codex.mjs";
 
 test("payloadType reads event_msg.payload.type", () => {
@@ -37,6 +38,14 @@ test("classifyRows: task_complete with process is waiting", () => {
   assert.equal(classifyRows(rows, { processOn: false, ageMs: 1000 }), "done");
   assert.equal(classifyRows(rows, { processOn: false, ageMs: 20 * 60_000 }), "idle");
 });
+
+test("ageStatus expires cached done without a file write", () => {
+  assert.equal(ageStatus("done", { processOn: false, ageMs: 1000 }), "done");
+  assert.equal(ageStatus("done", { processOn: false, ageMs: 20 * 60_000 }), "idle");
+  assert.equal(ageStatus("done", { processOn: true, ageMs: 20 * 60_000 }), "waiting");
+  assert.equal(ageStatus("running", { processOn: false, ageMs: 120_000 }), "waiting");
+});
+
 
 test("classifyRows: error wins", () => {
   const rows = [

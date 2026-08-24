@@ -40,7 +40,7 @@ export function drawGrokBot(
   ctx.scale(scale, scale);
   if (faceScale > 0.28) ctx.translate(0, -FACE_R * 0.06);
 
-  const face = resolveFaceHex(engine.faceColor);
+  const face = resolveFaceHex(engine.displayColor || engine.faceColor);
   const eyeFill = theme.eye;
   const spin = engine.t.spin.value;
   if (spin) ctx.rotate(spin * Math.sin(performance.now() / 900) * 0.35);

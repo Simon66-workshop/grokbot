@@ -80,6 +80,132 @@ export function luminance(hex: string): number {
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 }
 
+export type MoodId = "idle" | "look" | "think" | "wait" | "joy" | "error" | "play" | "sleep";
+
+export const MOOD_HEX: Record<MoodId, string | null> = {
+  idle: null,
+  look: "#3db7e8",
+  think: "#7b5cff",
+  wait: "#e2a116",
+  joy: "#2bb673",
+  error: "#e85d4c",
+  play: "#e85a9b",
+  sleep: "#161513",
+};
+
+const MOOD_AMOUNT: Record<MoodId, number> = {
+  idle: 0,
+  look: 0.48,
+  think: 0.58,
+  wait: 0.64,
+  joy: 0.56,
+  error: 0.7,
+  play: 0.5,
+  sleep: 0.62,
+};
+
+export function mixRgb(
+  a: { r: number; g: number; b: number },
+  b: { r: number; g: number; b: number },
+  t: number,
+) {
+  const u = Math.max(0, Math.min(1, t));
+  return {
+    r: a.r + (b.r - a.r) * u,
+    g: a.g + (b.g - a.g) * u,
+    b: a.b + (b.b - a.b) * u,
+  };
+}
+
+export function mixHex(a: string, b: string, t: number) {
+  const c = mixRgb(hexToRgb(a), hexToRgb(b), t);
+  return rgbToHex(c.r, c.g, c.b);
+}
+
+export function lerpHue(a: number, b: number, t: number) {
+  const d = ((b - a + 540) % 360) - 180;
+  return (a + d * t + 360) % 360;
+}
+
+export function mixHsv(a: Hsv, b: Hsv, t: number): Hsv {
+  const u = Math.max(0, Math.min(1, t));
+  return {
+    h: lerpHue(a.h, b.h, u),
+    s: a.s + (b.s - a.s) * u,
+    v: a.v + (b.v - a.v) * u,
+  };
+}
+
+export function moodTint(homeHex: string, moodHex: string | null, amount: number): Hsv {
+  const home = hexToHsv(homeHex);
+  if (!moodHex || amount <= 0) return home;
+  return mixHsv(home, hexToHsv(moodHex), amount);
+}
+
+export const MOOD_FACE: Record<MoodId, number> = {
+  idle: 0,
+  look: 14,
+  think: 9,
+  wait: 10,
+  joy: 5,
+  error: 17,
+  play: 5,
+  sleep: 7,
+};
+
+export const STATE_RANK: Record<string, number> = {
+  idle: 0,
+  blink: 1,
+  look: 2,
+  sparkle: 3,
+  bounce: 3,
+  orbits: 3,
+  streaks: 3,
+  think: 4,
+  focus: 4,
+  loading: 4,
+  shrink: 4,
+  trail: 4,
+  exclaim: 5,
+  "exclaim-fly": 5,
+  sleep: 6,
+  egg: 7,
+  hex: 7,
+  triangle: 7,
+};
+
+export function canEnterState(current: string, next: string, force = false) {
+  if (force || current === next) return true;
+  return (STATE_RANK[next] || 0) >= (STATE_RANK[current] || 0);
+}
+
+export function moodFromExpression(id: number): MoodId {
+  if (id === 5 || id === 20) return "joy";
+  if (id === 6 || id === 9 || id === 17 || id === 18) return "think";
+  if (id === 10) return "wait";
+  if (id === 15 || id === 7 || id === 16) return "sleep";
+  if (id === 11 || id === 12) return "play";
+  if (id === 1 || id === 2 || id === 3 || id === 13 || id === 14) return "look";
+  return "idle";
+}
+
+export function moodFromState(state: string): MoodId {
+  if (state === "sleep") return "sleep";
+  if (state === "think" || state === "loading" || state === "focus") return "think";
+  if (state === "exclaim" || state === "exclaim-fly") return "wait";
+  if (state === "bounce" || state === "sparkle" || state === "orbits" || state === "streaks") return "play";
+  if (state === "look") return "look";
+  return "idle";
+}
+
+export function moodBlend(mood: MoodId, state: string, expression: number) {
+  const fromMood = mood !== "idle" ? mood : "idle";
+  const fromState = moodFromState(state);
+  const fromExpr = moodFromExpression(expression);
+  const id: MoodId = fromMood !== "idle" ? fromMood : fromState !== "idle" ? fromState : fromExpr;
+  return { id, hex: MOOD_HEX[id], amount: MOOD_AMOUNT[id] };
+}
+
 export type WheelHit = { zone: "ring" | "disc"; hsv: Hsv };
 
 export function hitColorWheel(

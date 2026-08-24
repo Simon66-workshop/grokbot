@@ -654,6 +654,299 @@
     return v === "work" || v === "companion" || v === "demo";
   }
 
+  // src/lib/grokbot/color.ts
+  var GROK_BLUE = "#1b56f3";
+  var INK = "#161513";
+  var FACE_PRESETS = [
+    { name: "Grok", hex: GROK_BLUE },
+    { name: "Ink", hex: INK },
+    { name: "Coral", hex: "#e85d4c" },
+    { name: "Gold", hex: "#e2a116" },
+    { name: "Mint", hex: "#2bb673" },
+    { name: "Violet", hex: "#7b5cff" },
+    { name: "Sky", hex: "#3db7e8" },
+    { name: "Rose", hex: "#e85a9b" }
+  ];
+  function resolveFaceHex(c) {
+    if (!c || c === "blue") return GROK_BLUE;
+    if (c === "ink") return INK;
+    return c;
+  }
+  function hexToRgb(hex) {
+    const h = resolveFaceHex(hex).replace("#", "");
+    const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
+    return { r: n >> 16 & 255, g: n >> 8 & 255, b: n & 255 };
+  }
+  function rgbToHex(r, g, b) {
+    const c = (n) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, "0");
+    return `#${c(r)}${c(g)}${c(b)}`;
+  }
+  function rgbToHsv(r, g, b) {
+    r /= 255;
+    g /= 255;
+    b /= 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const d = max - min;
+    let h = 0;
+    if (d !== 0) {
+      if (max === r) h = (g - b) / d % 6;
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h *= 60;
+      if (h < 0) h += 360;
+    }
+    return { h, s: max === 0 ? 0 : d / max, v: max };
+  }
+  function hsvToRgb(h, s, v) {
+    const c = v * s;
+    const x = c * (1 - Math.abs(h / 60 % 2 - 1));
+    const m = v - c;
+    let rp = 0;
+    let gp = 0;
+    let bp = 0;
+    if (h < 60) [rp, gp, bp] = [c, x, 0];
+    else if (h < 120) [rp, gp, bp] = [x, c, 0];
+    else if (h < 180) [rp, gp, bp] = [0, c, x];
+    else if (h < 240) [rp, gp, bp] = [0, x, c];
+    else if (h < 300) [rp, gp, bp] = [x, 0, c];
+    else [rp, gp, bp] = [c, 0, x];
+    return { r: (rp + m) * 255, g: (gp + m) * 255, b: (bp + m) * 255 };
+  }
+  function hsvToHex(h, s, v) {
+    const { r, g, b } = hsvToRgb(h, s, v);
+    return rgbToHex(r, g, b);
+  }
+  function hexToHsv(hex) {
+    const { r, g, b } = hexToRgb(hex);
+    return rgbToHsv(r, g, b);
+  }
+  function luminance(hex) {
+    const { r, g, b } = hexToRgb(hex);
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  }
+  var MOOD_HEX = {
+    idle: null,
+    look: "#3db7e8",
+    think: "#7b5cff",
+    wait: "#e2a116",
+    joy: "#2bb673",
+    error: "#e85d4c",
+    play: "#e85a9b",
+    sleep: "#161513"
+  };
+  var MOOD_AMOUNT = {
+    idle: 0,
+    look: 0.48,
+    think: 0.58,
+    wait: 0.64,
+    joy: 0.56,
+    error: 0.7,
+    play: 0.5,
+    sleep: 0.62
+  };
+  function lerpHue(a, b, t) {
+    const d = (b - a + 540) % 360 - 180;
+    return (a + d * t + 360) % 360;
+  }
+  function mixHsv(a, b, t) {
+    const u = Math.max(0, Math.min(1, t));
+    return {
+      h: lerpHue(a.h, b.h, u),
+      s: a.s + (b.s - a.s) * u,
+      v: a.v + (b.v - a.v) * u
+    };
+  }
+  function moodTint(homeHex, moodHex, amount) {
+    const home = hexToHsv(homeHex);
+    if (!moodHex || amount <= 0) return home;
+    return mixHsv(home, hexToHsv(moodHex), amount);
+  }
+  var MOOD_FACE = {
+    idle: 0,
+    look: 14,
+    think: 9,
+    wait: 10,
+    joy: 5,
+    error: 17,
+    play: 5,
+    sleep: 7
+  };
+  var STATE_RANK = {
+    idle: 0,
+    blink: 1,
+    look: 2,
+    sparkle: 3,
+    bounce: 3,
+    orbits: 3,
+    streaks: 3,
+    think: 4,
+    focus: 4,
+    loading: 4,
+    shrink: 4,
+    trail: 4,
+    exclaim: 5,
+    "exclaim-fly": 5,
+    sleep: 6,
+    egg: 7,
+    hex: 7,
+    triangle: 7
+  };
+  function canEnterState(current, next, force = false) {
+    if (force || current === next) return true;
+    return (STATE_RANK[next] || 0) >= (STATE_RANK[current] || 0);
+  }
+  function moodFromExpression(id) {
+    if (id === 5 || id === 20) return "joy";
+    if (id === 6 || id === 9 || id === 17 || id === 18) return "think";
+    if (id === 10) return "wait";
+    if (id === 15 || id === 7 || id === 16) return "sleep";
+    if (id === 11 || id === 12) return "play";
+    if (id === 1 || id === 2 || id === 3 || id === 13 || id === 14) return "look";
+    return "idle";
+  }
+  function moodFromState(state) {
+    if (state === "sleep") return "sleep";
+    if (state === "think" || state === "loading" || state === "focus") return "think";
+    if (state === "exclaim" || state === "exclaim-fly") return "wait";
+    if (state === "bounce" || state === "sparkle" || state === "orbits" || state === "streaks") return "play";
+    if (state === "look") return "look";
+    return "idle";
+  }
+  function moodBlend(mood, state, expression) {
+    const fromMood = mood !== "idle" ? mood : "idle";
+    const fromState = moodFromState(state);
+    const fromExpr = moodFromExpression(expression);
+    const id = fromMood !== "idle" ? fromMood : fromState !== "idle" ? fromState : fromExpr;
+    return { id, hex: MOOD_HEX[id], amount: MOOD_AMOUNT[id] };
+  }
+  function hitColorWheel(x, y, size, current) {
+    const cx = size / 2;
+    const cy = size / 2;
+    const dx = x - cx;
+    const dy = y - cy;
+    const r = Math.hypot(dx, dy);
+    const outer = size / 2 - 1;
+    const ringIn = outer - 16;
+    const disc = ringIn - 7;
+    const ang = Math.atan2(dy, dx) * 180 / Math.PI;
+    const hue = (ang + 360 + 90) % 360;
+    if (r <= outer && r >= ringIn - 2) {
+      return { zone: "ring", hsv: { h: hue, s: Math.max(current.s, 0.55), v: Math.max(current.v, 0.72) } };
+    }
+    if (r <= disc) {
+      return { zone: "disc", hsv: { h: current.h, s: Math.min(1, r / disc), v: current.v } };
+    }
+    return null;
+  }
+  function drawColorWheel(ctx2, size, current) {
+    const cx = size / 2;
+    const cy = size / 2;
+    const outer = size / 2 - 1;
+    const ringIn = outer - 16;
+    const disc = ringIn - 7;
+    ctx2.clearRect(0, 0, size, size);
+    const img = ctx2.createImageData(size, size);
+    const data = img.data;
+    for (let py = 0; py < size; py++) {
+      for (let px = 0; px < size; px++) {
+        const dx = px + 0.5 - cx;
+        const dy = py + 0.5 - cy;
+        const rr = Math.hypot(dx, dy);
+        if (rr > disc) continue;
+        const { r, g, b } = hsvToRgb(current.h, Math.min(1, rr / disc), current.v);
+        const i = (py * size + px) * 4;
+        data[i] = r;
+        data[i + 1] = g;
+        data[i + 2] = b;
+        data[i + 3] = 255;
+      }
+    }
+    ctx2.putImageData(img, 0, 0);
+    const segs = 96;
+    for (let i = 0; i < segs; i++) {
+      const a0 = i / segs * Math.PI * 2 - Math.PI / 2;
+      const a1 = (i + 1.15) / segs * Math.PI * 2 - Math.PI / 2;
+      ctx2.beginPath();
+      ctx2.arc(cx, cy, outer, a0, a1);
+      ctx2.arc(cx, cy, ringIn, a1, a0, true);
+      ctx2.closePath();
+      ctx2.fillStyle = hsvToHex(i / segs * 360, 1, 1);
+      ctx2.fill();
+    }
+    ctx2.beginPath();
+    ctx2.arc(cx, cy, disc + 0.5, 0, Math.PI * 2);
+    ctx2.strokeStyle = "rgba(255,255,255,0.35)";
+    ctx2.lineWidth = 1;
+    ctx2.stroke();
+    const ringA = (current.h - 90) * Math.PI / 180;
+    const ringR = (outer + ringIn) / 2;
+    ctx2.beginPath();
+    ctx2.arc(cx + Math.cos(ringA) * ringR, cy + Math.sin(ringA) * ringR, 5.5, 0, Math.PI * 2);
+    ctx2.fillStyle = "#fff";
+    ctx2.fill();
+    ctx2.strokeStyle = "rgba(20,18,16,0.45)";
+    ctx2.lineWidth = 1;
+    ctx2.stroke();
+    const discA = (current.h - 90) * Math.PI / 180;
+    const discR = current.s * disc;
+    ctx2.beginPath();
+    ctx2.arc(cx + Math.cos(discA) * discR, cy + Math.sin(discA) * discR, 4.5, 0, Math.PI * 2);
+    ctx2.fillStyle = "#fff";
+    ctx2.fill();
+    ctx2.strokeStyle = "rgba(20,18,16,0.45)";
+    ctx2.lineWidth = 1;
+    ctx2.stroke();
+  }
+
+  // src/lib/grokbot/hysteresis.ts
+  var MOOD_RANK = {
+    idle: 0,
+    look: 1,
+    play: 2,
+    sleep: 2,
+    think: 3,
+    joy: 3,
+    wait: 4,
+    error: 5
+  };
+  function createLatch({ rank = {}, enterMs = 0, exitMs = 8e3, init } = {}) {
+    let value = init;
+    let cand = init;
+    let since = 0;
+    return {
+      value: () => value,
+      reset(next, now = Date.now()) {
+        value = next;
+        cand = next;
+        since = now;
+        return value;
+      },
+      sample(next, now = Date.now()) {
+        if (value === void 0) {
+          value = next;
+          cand = next;
+          since = now;
+          return value;
+        }
+        if (next === value) {
+          cand = next;
+          return value;
+        }
+        const up = (rank[String(next)] || 0) > (rank[String(value)] || 0);
+        if (next !== cand) {
+          cand = next;
+          since = now;
+          if (up && enterMs <= 0) value = next;
+          return value;
+        }
+        const need = up ? enterMs : exitMs;
+        if (now - since >= need) value = next;
+        return value;
+      }
+    };
+  }
+
   // src/lib/grokbot/engine.ts
   var BOUNCE_DIRS = [
     { x: 0, y: 1, faces: [5, 3, 20, 10] },
@@ -751,6 +1044,13 @@
     shape = "circle";
     state = "idle";
     faceColor = "blue";
+    mood = "idle";
+    wantExpression = 0;
+    exprHoldUntil = 0;
+    shownH = 227;
+    shownS = 0.89;
+    shownV = 0.953;
+    moodHold = createLatch({ rank: MOOD_RANK, enterMs: 0, exitMs: 1800 });
     springSpeed = 7;
     flipX = false;
     emphasis = false;
@@ -884,9 +1184,11 @@
       this.stopDemo();
       this.goIdle();
     }
-    setExpression(id) {
-      this.expression = (id % 25 + 25) % 25;
-      if (this.state === "sleep") this.goIdle();
+    setExpression(id, opts = {}) {
+      const next = (id % 25 + 25) % 25;
+      this.expression = next;
+      if (opts.hold && opts.hold > 0) this.exprHoldUntil = this.elapsed + opts.hold;
+      if (this.state === "sleep" && next !== 7) this.goIdle();
     }
     setShape(id) {
       this.shape = id;
@@ -919,6 +1221,18 @@
     setFaceColor(c) {
       this.faceColor = c;
     }
+    setMood(id) {
+      const held = this.moodHold.sample(id, this.elapsed * 1e3);
+      const same = this.mood === held;
+      this.mood = held;
+      this.wantExpression = MOOD_FACE[held] ?? 0;
+      if (same) return;
+      if (this.state === "idle") this.setExpression(this.wantExpression);
+      if (held === "idle") this.touchedAt = this.elapsed;
+    }
+    get displayColor() {
+      return hsvToHex(this.shownH, this.shownS, this.shownV);
+    }
     setFollowPointer(v) {
       this.followPointer = v;
       if (!v) this.pointer.active = false;
@@ -948,7 +1262,7 @@
     wake() {
       if (this.state !== "sleep") return;
       this.goIdle();
-      this.expression = 0;
+      this.setExpression(this.wantExpression);
     }
     setPaused(on) {
       this.paused = on;
@@ -957,6 +1271,10 @@
     reset() {
       this.stopDemo();
       this.goIdle();
+      this.mood = "idle";
+      this.wantExpression = 0;
+      this.moodHold.reset("idle", this.elapsed * 1e3);
+      this.exprHoldUntil = 0;
       this.expression = 0;
       this.shape = "circle";
       this.tgt = this.defaultTargets();
@@ -996,7 +1314,9 @@
       this.nextBlink = this.elapsed + 2.4 + Math.random() * 2.6;
       this.stateUntil = 0;
     }
-    play(state) {
+    play(state, opts = {}) {
+      if (!canEnterState(this.state, state, opts.force)) return;
+      this.exprHoldUntil = 0;
       this.state = state;
       this.tgt.flyX = 0;
       this.tgt.flyY = 0;
@@ -1008,6 +1328,7 @@
           this.blink();
           break;
         case "look":
+          this.setExpression(this.wantExpression || 14);
           this.tgt.faceW = 1;
           this.tgt.dotsW = 0;
           this.tgt.exclaimW = 0;
@@ -1026,6 +1347,7 @@
           this.stateUntil = this.elapsed + 2.4;
           break;
         case "exclaim":
+          this.setExpression(10);
           this.tgt.faceW = 0;
           this.tgt.dotsW = 0;
           this.tgt.exclaimW = 1;
@@ -1044,7 +1366,7 @@
           this.stateUntil = this.elapsed + 1.4;
           break;
         case "focus":
-          this.expression = 9;
+          this.setExpression(9);
           this.tgt.faceW = 1;
           this.tgt.dotsW = 0;
           this.tgt.exclaimW = 0;
@@ -1101,7 +1423,7 @@
           this.stateUntil = this.elapsed + 1.8;
           break;
         case "sleep":
-          this.expression = 7;
+          this.setExpression(7);
           this.tgt.faceW = 1;
           this.tgt.eyeAlpha = 1;
           this.tgt.bodyScale = 1;
@@ -1116,6 +1438,7 @@
           this.stateUntil = this.elapsed + 1.5;
           break;
         case "think":
+          this.setExpression(this.wantExpression || 9);
           this.tgt.orbitW = 1;
           this.tgt.eyeAlpha = 1;
           this.tgt.faceW = 1;
@@ -1132,7 +1455,7 @@
           this.tgt.bodyScale = 1;
           this.tgt.flyX = 0;
           this.tgt.flyY = 0;
-          this.expression = 5;
+          this.setExpression(5);
           this.rollBounce();
           this.bounceT0 = this.elapsed;
           this.bounceHold = true;
@@ -1141,7 +1464,7 @@
       }
     }
     bounceOnce() {
-      this.play("bounce");
+      this.play("bounce", { force: true });
       this.bounceHold = false;
       this.stateUntil = this.elapsed + this.bounceDur;
     }
@@ -1196,12 +1519,14 @@
       this.tickDemo();
       this.tickBehaviors(dt);
       this.tickGaze();
+      this.tickColor(dt);
       const expr = getExpression(this.expression);
       const blink = this.t.blink.value;
       const leftT = { ...expr.left, h: expr.left.h * blink, alpha: expr.left.alpha };
       const rightT = { ...expr.right, h: expr.right.h * blink, alpha: expr.right.alpha };
-      stepEye(this.left, leftT, dt, speed);
-      stepEye(this.right, rightT, dt, speed);
+      const eyeSpeed = this.state === "bounce" ? speed * 0.82 : speed * 0.52;
+      stepEye(this.left, leftT, dt, eyeSpeed);
+      stepEye(this.right, rightT, dt, eyeSpeed);
       const bodyTarget = this.tgt.exclaimW > 0.55 ? exclaimStem() : bodyForShape(this.shape, this.elapsed);
       if (this.bodyCurr.length !== bodyTarget.length) {
         this.bodyCurr = bodyTarget.map((p) => ({ x: springOf(p.x), y: springOf(p.y) }));
@@ -1246,6 +1571,15 @@
         this.trail.shift();
       }
     }
+    tickColor(dt) {
+      const home = resolveFaceHex(this.faceColor);
+      const blend = moodBlend(this.mood, this.state, this.expression);
+      const target = moodTint(home, blend.hex, blend.amount);
+      const k = 1 - Math.exp(-dt * (this.state === "bounce" ? 4.2 : 2.6));
+      this.shownH = (this.shownH + ((target.h - this.shownH + 540) % 360 - 180) * k + 360) % 360;
+      this.shownS += (target.s - this.shownS) * k;
+      this.shownV += (target.v - this.shownV) * k;
+    }
     tickDemo() {
       if (!this.demoPlaying) return;
       const t = this.elapsed - this.demoT0;
@@ -1268,6 +1602,11 @@
       }
       if (this.state === "sleep" && !this.reducedMotion) {
         this.tgt.bodyScale = 1 + Math.sin(this.elapsed * 0.7) * 0.012;
+      }
+      if (this.mood !== "idle") this.touchedAt = Math.max(this.touchedAt, this.elapsed - 8);
+      if (this.exprHoldUntil && this.elapsed >= this.exprHoldUntil) this.exprHoldUntil = 0;
+      if (this.state === "idle" && this.expression !== this.wantExpression && !this.demoPlaying && this.elapsed >= this.exprHoldUntil) {
+        this.setExpression(this.wantExpression);
       }
       if (this.state === "blink" && this.elapsed > this.stateUntil) {
         this.tgt.blink = 1;
@@ -1292,7 +1631,7 @@
       if (this.state === "bounce") {
         this.tickBounce();
       }
-      if (this.autoIdle && this.state === "idle" && !this.demoPlaying && this.elapsed > this.nextBlink) {
+      if (this.autoIdle && this.state === "idle" && this.mood === "idle" && !this.demoPlaying && this.elapsed > this.nextBlink) {
         if (this.reducedMotion) {
           if (policy.blink) this.blink({ silent: true });
           else this.nextBlink = this.elapsed + 4;
@@ -1333,6 +1672,7 @@
           this.tgt.streakW = 0;
           this.tgt.satW = 0;
           this.state = "idle";
+          this.setExpression(this.wantExpression);
           this.nextBlink = this.elapsed + 2.2 + Math.random() * 2;
         }
       }
@@ -1359,7 +1699,7 @@
       this.tgt.squash = cue.squash;
       this.tgt.yaw = cue.tilt;
       this.tgt.bodyScale = 1;
-      if (this.expression !== cue.expression) this.expression = cue.expression;
+      if (this.expression !== cue.expression) this.setExpression(cue.expression);
       const air = Math.hypot(cue.hopX, cue.hopY) > 0.12;
       if (this.lastAir && !air) this.emit("land");
       this.lastAir = air;
@@ -1440,156 +1780,6 @@
     }
   };
 
-  // src/lib/grokbot/color.ts
-  var GROK_BLUE = "#1b56f3";
-  var INK = "#161513";
-  var FACE_PRESETS = [
-    { name: "Grok", hex: GROK_BLUE },
-    { name: "Ink", hex: INK },
-    { name: "Coral", hex: "#e85d4c" },
-    { name: "Gold", hex: "#e2a116" },
-    { name: "Mint", hex: "#2bb673" },
-    { name: "Violet", hex: "#7b5cff" },
-    { name: "Sky", hex: "#3db7e8" },
-    { name: "Rose", hex: "#e85a9b" }
-  ];
-  function resolveFaceHex(c) {
-    if (!c || c === "blue") return GROK_BLUE;
-    if (c === "ink") return INK;
-    return c;
-  }
-  function hexToRgb(hex) {
-    const h = resolveFaceHex(hex).replace("#", "");
-    const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
-    return { r: n >> 16 & 255, g: n >> 8 & 255, b: n & 255 };
-  }
-  function rgbToHex(r, g, b) {
-    const c = (n) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, "0");
-    return `#${c(r)}${c(g)}${c(b)}`;
-  }
-  function rgbToHsv(r, g, b) {
-    r /= 255;
-    g /= 255;
-    b /= 255;
-    const max = Math.max(r, g, b);
-    const min = Math.min(r, g, b);
-    const d = max - min;
-    let h = 0;
-    if (d !== 0) {
-      if (max === r) h = (g - b) / d % 6;
-      else if (max === g) h = (b - r) / d + 2;
-      else h = (r - g) / d + 4;
-      h *= 60;
-      if (h < 0) h += 360;
-    }
-    return { h, s: max === 0 ? 0 : d / max, v: max };
-  }
-  function hsvToRgb(h, s, v) {
-    const c = v * s;
-    const x = c * (1 - Math.abs(h / 60 % 2 - 1));
-    const m = v - c;
-    let rp = 0;
-    let gp = 0;
-    let bp = 0;
-    if (h < 60) [rp, gp, bp] = [c, x, 0];
-    else if (h < 120) [rp, gp, bp] = [x, c, 0];
-    else if (h < 180) [rp, gp, bp] = [0, c, x];
-    else if (h < 240) [rp, gp, bp] = [0, x, c];
-    else if (h < 300) [rp, gp, bp] = [x, 0, c];
-    else [rp, gp, bp] = [c, 0, x];
-    return { r: (rp + m) * 255, g: (gp + m) * 255, b: (bp + m) * 255 };
-  }
-  function hsvToHex(h, s, v) {
-    const { r, g, b } = hsvToRgb(h, s, v);
-    return rgbToHex(r, g, b);
-  }
-  function hexToHsv(hex) {
-    const { r, g, b } = hexToRgb(hex);
-    return rgbToHsv(r, g, b);
-  }
-  function luminance(hex) {
-    const { r, g, b } = hexToRgb(hex);
-    return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-  }
-  function hitColorWheel(x, y, size, current) {
-    const cx = size / 2;
-    const cy = size / 2;
-    const dx = x - cx;
-    const dy = y - cy;
-    const r = Math.hypot(dx, dy);
-    const outer = size / 2 - 1;
-    const ringIn = outer - 16;
-    const disc = ringIn - 7;
-    const ang = Math.atan2(dy, dx) * 180 / Math.PI;
-    const hue = (ang + 360 + 90) % 360;
-    if (r <= outer && r >= ringIn - 2) {
-      return { zone: "ring", hsv: { h: hue, s: Math.max(current.s, 0.55), v: Math.max(current.v, 0.72) } };
-    }
-    if (r <= disc) {
-      return { zone: "disc", hsv: { h: current.h, s: Math.min(1, r / disc), v: current.v } };
-    }
-    return null;
-  }
-  function drawColorWheel(ctx2, size, current) {
-    const cx = size / 2;
-    const cy = size / 2;
-    const outer = size / 2 - 1;
-    const ringIn = outer - 16;
-    const disc = ringIn - 7;
-    ctx2.clearRect(0, 0, size, size);
-    const img = ctx2.createImageData(size, size);
-    const data = img.data;
-    for (let py = 0; py < size; py++) {
-      for (let px = 0; px < size; px++) {
-        const dx = px + 0.5 - cx;
-        const dy = py + 0.5 - cy;
-        const rr = Math.hypot(dx, dy);
-        if (rr > disc) continue;
-        const { r, g, b } = hsvToRgb(current.h, Math.min(1, rr / disc), current.v);
-        const i = (py * size + px) * 4;
-        data[i] = r;
-        data[i + 1] = g;
-        data[i + 2] = b;
-        data[i + 3] = 255;
-      }
-    }
-    ctx2.putImageData(img, 0, 0);
-    const segs = 96;
-    for (let i = 0; i < segs; i++) {
-      const a0 = i / segs * Math.PI * 2 - Math.PI / 2;
-      const a1 = (i + 1.15) / segs * Math.PI * 2 - Math.PI / 2;
-      ctx2.beginPath();
-      ctx2.arc(cx, cy, outer, a0, a1);
-      ctx2.arc(cx, cy, ringIn, a1, a0, true);
-      ctx2.closePath();
-      ctx2.fillStyle = hsvToHex(i / segs * 360, 1, 1);
-      ctx2.fill();
-    }
-    ctx2.beginPath();
-    ctx2.arc(cx, cy, disc + 0.5, 0, Math.PI * 2);
-    ctx2.strokeStyle = "rgba(255,255,255,0.35)";
-    ctx2.lineWidth = 1;
-    ctx2.stroke();
-    const ringA = (current.h - 90) * Math.PI / 180;
-    const ringR = (outer + ringIn) / 2;
-    ctx2.beginPath();
-    ctx2.arc(cx + Math.cos(ringA) * ringR, cy + Math.sin(ringA) * ringR, 5.5, 0, Math.PI * 2);
-    ctx2.fillStyle = "#fff";
-    ctx2.fill();
-    ctx2.strokeStyle = "rgba(20,18,16,0.45)";
-    ctx2.lineWidth = 1;
-    ctx2.stroke();
-    const discA = (current.h - 90) * Math.PI / 180;
-    const discR = current.s * disc;
-    ctx2.beginPath();
-    ctx2.arc(cx + Math.cos(discA) * discR, cy + Math.sin(discA) * discR, 4.5, 0, Math.PI * 2);
-    ctx2.fillStyle = "#fff";
-    ctx2.fill();
-    ctx2.strokeStyle = "rgba(20,18,16,0.45)";
-    ctx2.lineWidth = 1;
-    ctx2.stroke();
-  }
-
   // src/lib/grokbot/renderer.ts
   function fillPath(ctx2, pts) {
     if (!pts.length) return;
@@ -1610,7 +1800,7 @@
     const scale = dpr * faceScale / FACE_R;
     ctx2.scale(scale, scale);
     if (faceScale > 0.28) ctx2.translate(0, -FACE_R * 0.06);
-    const face = resolveFaceHex(engine.faceColor);
+    const face = resolveFaceHex(engine.displayColor || engine.faceColor);
     const eyeFill = theme.eye;
     const spin = engine.t.spin.value;
     if (spin) ctx2.rotate(spin * Math.sin(performance.now() / 900) * 0.35);
@@ -2008,7 +2198,7 @@
     l: { box: 440, faceScale: 0.24, label: "L", hint: "Large \xB7 440" }
   };
   var STAGE_W = 580;
-  var DOCK_ROOM = 160;
+  var DOCK_ROOM = 230;
   var SIZE_KEY = "grok-pet-size";
   var AUTO_WORK_KEY = "grok-auto-work";
   var CODEX_WATCH_KEY = "grok-codex-watch";
@@ -2071,7 +2261,7 @@
       box,
       faceScale: size.faceScale,
       inset,
-      dockMain: box - 40,
+      dockMain: box - 72,
       faceSideTop: Math.round((h - box) / 2),
       ball: {
         bottom: { x: STAGE_W / 2, y: box / 2 },
@@ -2081,11 +2271,171 @@
       }
     };
   }
-  function inWorkHours(d = /* @__PURE__ */ new Date()) {
+  function inWorkHours(d = /* @__PURE__ */ new Date(), wasOn = false) {
     const day = d.getDay();
     if (day === 0 || day === 6) return false;
     const m = d.getHours() * 60 + d.getMinutes();
+    if (wasOn) return m >= 8 * 60 + 45 && m < 18 * 60 + 20;
     return m >= 9 * 60 && m < 18 * 60;
+  }
+
+  // src/lib/grokbot/desk-core.js
+  var EMPTY_POMO = {
+    running: false,
+    phase: "idle",
+    remainingMs: 0,
+    totalMs: 25 * 6e4
+  };
+  var EMPTY_DESK = {
+    digest: "All quiet.",
+    agents: [],
+    meeting: { on: false, next: null },
+    focus: { app: "", workish: false },
+    git: [],
+    pomo: { ...EMPTY_POMO },
+    grok: { available: false, source: "none" },
+    perms: { calendar: true, automation: true, grokBot: true, missing: [] },
+    quiet: false
+  };
+  function formatRemain(ms) {
+    const s = Math.max(0, Math.round(ms / 1e3));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${m}:${String(r).padStart(2, "0")}`;
+  }
+  function composeDigest(input = {}) {
+    const bits = [];
+    const agents = input.agents || [];
+    const waiting = agents.filter((a) => a.status === "waiting");
+    const running = agents.filter((a) => a.status === "running");
+    const errored = agents.filter((a) => a.status === "error");
+    if (errored.length) bits.push(`${errored[0].name} hit an error`);
+    else if (waiting.length) bits.push(`${waiting.slice(0, 2).map((a) => a.name).join(" & ")} waiting`);
+    else if (running.length) {
+      const first2 = running[0];
+      bits.push(first2.cwd ? `${first2.name} on ${first2.cwd}` : `${first2.name} working`);
+    }
+    const meet = input.meeting;
+    if (meet?.on) bits.push("in a meeting");
+    else if (meet?.next && meet.next.minutes >= 0) {
+      const title = String(meet.next.title || "Meeting").slice(0, 28);
+      bits.push(`${title} in ${meet.next.minutes}m`);
+    }
+    const pomo = input.pomo;
+    if (pomo?.running && pomo.phase === "work") bits.push(`focus ${formatRemain(pomo.remainingMs)}`);
+    else if (pomo?.running && pomo.phase === "break") bits.push(`break ${formatRemain(pomo.remainingMs)}`);
+    const git = input.git || [];
+    const fail = git.find((g) => g.tests === "fail");
+    if (fail) bits.push(`${fail.repo} tests failed`);
+    else {
+      const dirty = git.find((g) => g.dirty > 0);
+      if (dirty) bits.push(`${dirty.repo} dirty`);
+    }
+    const perms = input.perms;
+    if (perms?.missing?.length) bits.unshift(perms.missing[0].label);
+    if (!bits.length) return input.focus?.workish ? "Heads down." : "All quiet.";
+    return bits.slice(0, 3).join(" \xB7 ");
+  }
+  function demoDesk() {
+    const agents = [
+      { id: "grok-bot", name: "Grok Bot", status: "waiting", label: "needs you", threads: 1, cwd: "", processOn: true },
+      { id: "claude", name: "Claude", status: "waiting", label: "waiting", threads: 1, cwd: "grokbot", processOn: true }
+    ];
+    const meeting = { on: false, next: { title: "Design review", minutes: 12 } };
+    const git = [{ repo: "grokbot", branch: "main", dirty: 3, ahead: 1, behind: 0, tests: "pass" }];
+    const focus = { app: "Grok Bot", workish: true };
+    const pomo = { ...EMPTY_POMO };
+    const perms = {
+      calendar: false,
+      automation: true,
+      grokBot: false,
+      missing: [
+        { id: "calendar", label: "Allow Calendar" },
+        { id: "grok-bot", label: "Allow Grok Bot" }
+      ]
+    };
+    return {
+      digest: composeDigest({ agents, meeting, focus, git, pomo, perms }),
+      agents,
+      meeting,
+      focus,
+      git,
+      pomo,
+      grok: { available: true, source: "cli" },
+      perms,
+      quiet: false
+    };
+  }
+  function createPomo({ workMs = 25 * 6e4, breakMs = 5 * 6e4 } = {}) {
+    const state = {
+      running: false,
+      phase: "idle",
+      endsAt: 0,
+      pausedMs: 0,
+      totalMs: workMs,
+      workMs,
+      breakMs
+    };
+    function snap(now = Date.now()) {
+      if (!state.running) {
+        const remainingMs2 = state.phase === "idle" ? 0 : state.pausedMs;
+        return {
+          running: false,
+          phase: state.phase,
+          remainingMs: remainingMs2,
+          totalMs: state.totalMs
+        };
+      }
+      const remainingMs = Math.max(0, state.endsAt - now);
+      return {
+        running: remainingMs > 0,
+        phase: state.phase,
+        remainingMs,
+        totalMs: state.totalMs
+      };
+    }
+    function begin(phase, now = Date.now()) {
+      state.running = true;
+      state.phase = phase;
+      state.totalMs = phase === "break" ? state.breakMs : state.workMs;
+      state.endsAt = now + state.totalMs;
+      state.pausedMs = 0;
+      return { ...snap(now), justEnded: null };
+    }
+    function toggle(now = Date.now()) {
+      if (state.phase === "idle") return begin("work", now);
+      if (state.running) {
+        state.pausedMs = Math.max(0, state.endsAt - now);
+        state.running = false;
+        return { ...snap(now), justEnded: null };
+      }
+      state.running = true;
+      state.endsAt = now + (state.pausedMs || state.totalMs);
+      state.pausedMs = 0;
+      return { ...snap(now), justEnded: null };
+    }
+    function skip(now = Date.now()) {
+      if (state.phase === "work") return begin("break", now);
+      state.running = false;
+      state.phase = "idle";
+      state.endsAt = 0;
+      state.pausedMs = 0;
+      return { ...snap(now), justEnded: "break" };
+    }
+    function tick(now = Date.now()) {
+      if (!state.running) return { ...snap(now), justEnded: null };
+      if (state.endsAt - now > 0) return { ...snap(now), justEnded: null };
+      if (state.phase === "work") {
+        const next = begin("break", now);
+        return { ...next, justEnded: "work" };
+      }
+      state.running = false;
+      state.phase = "idle";
+      state.endsAt = 0;
+      state.pausedMs = 0;
+      return { ...snap(now), justEnded: "break" };
+    }
+    return { snap, toggle, skip, tick, begin };
   }
 
   // src/lib/grokbot/pet-shell.ts
@@ -2234,11 +2584,11 @@
   var ACTIONS = [
     { id: "idle", label: "Idle", run: (e2) => e2.reset() },
     { id: "blink", label: "Blink", run: (e2) => e2.blink() },
-    { id: "look", label: "Look", run: (e2) => e2.play("look") },
-    { id: "joy", label: "Joy", run: (e2) => e2.setExpression(5) },
-    { id: "think", label: "Think", run: (e2) => e2.play("think") },
-    { id: "wow", label: "Wow", run: (e2) => e2.play("exclaim") },
-    { id: "orbit", label: "Orbit", run: (e2) => e2.play("orbits") },
+    { id: "look", label: "Look", run: (e2) => e2.play("look", { force: true }) },
+    { id: "joy", label: "Joy", run: (e2) => e2.setExpression(5, { hold: 4 }) },
+    { id: "think", label: "Think", run: (e2) => e2.play("think", { force: true }) },
+    { id: "wow", label: "Wow", run: (e2) => e2.play("exclaim", { force: true }) },
+    { id: "orbit", label: "Orbit", run: (e2) => e2.play("orbits", { force: true }) },
     { id: "bounce", label: "Bounce", run: (e2) => e2.bounceOnce() },
     { id: "tour", label: "Tour", run: (e2) => e2.setScene("demo") }
   ];
@@ -2264,17 +2614,27 @@
 .grok-stage .face.hold { transform: scale(1.04); }
 .grok-stage .face:active { cursor: grabbing; }
 .grok-stage canvas.bot { display: block; width: 100%; height: 100%; }
-.grok-stage #wheel { display: block; width: 72px; height: 72px; cursor: crosshair; }
+.grok-stage #wheel { display: block; width: 64px; height: 64px; cursor: crosshair; }
 .grok-stage .dock {
   position: absolute;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   opacity: 0;
   pointer-events: none;
   z-index: 3;
 }
+.grok-stage .whisper { order: 1; }
+.grok-stage .agents { order: 2; }
+.grok-stage .desk { order: 3; }
+.grok-stage #actions { order: 4; }
+.grok-stage #scenes { order: 5; }
+.grok-stage #prefs { order: 6; }
+.grok-stage #wheel,
+.grok-stage .presets { order: 7; }
+.grok-stage[data-side="top"] .dock { flex-direction: column-reverse; }
+.grok-stage #prefs button.dim { opacity: 0.62; }
 .grok-stage.open .dock {
   opacity: 1;
   pointer-events: auto;
@@ -2323,6 +2683,46 @@
   text-align: center;
 }
 .grok-stage .watch[hidden] { display: none; }
+.grok-stage .whisper {
+  max-width: 260px;
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: rgba(22, 21, 19, 0.62);
+  color: #fffcf6;
+  font: 500 11px/1.35 "SF Pro Text", "Helvetica Neue", sans-serif;
+  text-align: center;
+}
+.grok-stage .whisper[hidden] { display: none; }
+.grok-stage .agents,
+.grok-stage .desk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+  max-width: 280px;
+}
+.grok-stage .agents[hidden],
+.grok-stage .desk[hidden] { display: none; }
+.grok-stage .agents button,
+.grok-stage .desk .chip {
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font: 500 10px/1.2 "SF Pro Text", "Helvetica Neue", sans-serif;
+  color: #fffcf6;
+  background: rgba(27, 86, 243, 0.62);
+  cursor: pointer;
+}
+.grok-stage .agents button.wait { background: rgba(201, 140, 40, 0.78); }
+.grok-stage .agents button.err { background: rgba(180, 50, 40, 0.78); }
+.grok-stage .agents button.done { background: rgba(40, 140, 80, 0.72); }
+.grok-stage .desk .chip {
+  cursor: default;
+  background: rgba(22, 21, 19, 0.5);
+}
+.grok-stage .desk button.chip { cursor: pointer; }
+.grok-stage .desk .chip.fail { background: rgba(180, 50, 40, 0.75); }
+.grok-stage .desk .chip.warn { background: rgba(201, 140, 40, 0.75); }
 .grok-stage .studio {
   border-radius: 999px;
   background: rgba(22, 21, 19, 0.4);
@@ -2390,10 +2790,23 @@
         <div class="bar" id="scenes"></div>
         <div class="bar" id="actions"></div>
         <div class="bar" id="prefs"></div>
-        <div class="watch" id="watch" hidden></div>
+        <div class="whisper" id="whisper" hidden></div>
+        <div class="agents" id="agents" hidden></div>
+        <div class="desk" id="desk" hidden></div>
         <a class="studio" id="studio" hidden>Studio</a>
       </div>`
       );
+    } else {
+      const dock = stage.querySelector("#dock");
+      if (dock && !stage.querySelector("#whisper")) {
+        dock.querySelector("#watch")?.remove();
+        dock.insertAdjacentHTML(
+          "beforeend",
+          `<div class="whisper" id="whisper" hidden></div>
+        <div class="agents" id="agents" hidden></div>
+        <div class="desk" id="desk" hidden></div>`
+        );
+      }
     }
     return stage;
   }
@@ -2417,7 +2830,9 @@
     const sceneBar = stage.querySelector("#scenes");
     const actionBar = stage.querySelector("#actions");
     const prefBar = stage.querySelector("#prefs");
-    const watchEl = stage.querySelector("#watch");
+    const whisperEl = stage.querySelector("#whisper");
+    const agentsEl = stage.querySelector("#agents");
+    const deskEl = stage.querySelector("#desk");
     const studio = stage.querySelector("#studio");
     const menuBot = document.querySelector("#menu-bot");
     const gesture = createPetGesture();
@@ -2483,21 +2898,164 @@
         btn.classList.toggle("on", watchCodex);
         btn.setAttribute("aria-pressed", watchCodex ? "true" : "false");
       }
-      if (!watchEl) return;
-      if (!watchCodex || !codexSnap || codexSnap.status === "idle") {
-        watchEl.hidden = true;
-        watchEl.textContent = "";
+    }
+    function paintPomo() {
+      const btn = prefBar?.querySelector("[data-pref=pomo]");
+      if (!btn) return;
+      const p = desk.pomo;
+      if (p.running && p.phase === "work") btn.textContent = formatRemain(p.remainingMs);
+      else if (p.running && p.phase === "break") btn.textContent = `Br ${formatRemain(p.remainingMs)}`;
+      else btn.textContent = "Focus";
+      btn.classList.toggle("on", p.running || p.phase === "break");
+      btn.title = p.running ? "Pause focus \xB7 F" : "25-minute focus \xB7 F";
+    }
+    function paintBrief() {
+      const btn = prefBar?.querySelector("[data-pref=brief]");
+      if (!btn) return;
+      btn.textContent = briefing ? "\u2026" : "Brief";
+      btn.classList.toggle("on", Boolean(whisper));
+      btn.title = desk.grok.available ? "Ask Grok \xB7 W" : "One-line status \xB7 W";
+    }
+    function paintWhisper() {
+      if (!whisperEl) return;
+      const text = whisper || (dockOpen ? desk.digest : "");
+      if (!text || text === "All quiet.") {
+        whisperEl.hidden = true;
+        whisperEl.textContent = "";
         return;
       }
-      const bits = [codexSnap.tool || "Agents", codexSnap.label];
-      if (codexSnap.name) bits.push(codexSnap.name);
-      watchEl.textContent = bits.join(" \xB7 ");
-      watchEl.hidden = false;
+      whisperEl.textContent = text;
+      whisperEl.hidden = false;
+    }
+    function paintAgents() {
+      if (!agentsEl) return;
+      agentsEl.replaceChildren();
+      const list = watchCodex ? desk.agents.filter((a) => a.status !== "idle") : [];
+      if (!list.length) {
+        agentsEl.hidden = true;
+        return;
+      }
+      agentsEl.hidden = false;
+      for (const agent of list.slice(0, 6)) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.dataset.agent = agent.id;
+        const klass = agent.status === "waiting" ? "wait" : agent.status === "error" ? "err" : agent.status === "done" ? "done" : "";
+        if (klass) b.classList.add(klass);
+        b.textContent = agent.cwd ? `${agent.name} \xB7 ${agent.cwd}` : `${agent.name} \xB7 ${agent.label}`;
+        b.title = "Open this tool";
+        b.addEventListener("click", () => {
+          ackedWait = `${agent.id}:${agent.status}:${agent.cwd}`;
+          if (pet) {
+            window.pet?.ackAgent?.(agent.id);
+            window.pet?.openAgent?.(agent.id);
+          } else showWhisper(`Would open ${agent.name} on your Mac`);
+        });
+        agentsEl.appendChild(b);
+      }
+    }
+    function paintDeskChips() {
+      if (!deskEl) return;
+      deskEl.replaceChildren();
+      const chips = [];
+      for (const p of desk.perms?.missing || []) {
+        chips.push({ text: p.label, kind: "fail", perm: p.id });
+      }
+      if (desk.quiet) chips.push({ text: "Face only", kind: "warn" });
+      const next = desk.meeting.next;
+      if (desk.meeting.on) chips.push({ text: "In a meeting", kind: "warn" });
+      else if (next && next.minutes >= 0) chips.push({ text: `${next.title} in ${next.minutes}m`, kind: "warn" });
+      for (const g of desk.git.slice(0, 2)) {
+        const bits = [g.repo, g.branch].filter(Boolean);
+        if (g.tests === "fail") bits.push("tests");
+        else if (g.dirty) bits.push(`${g.dirty} dirty`);
+        chips.push({
+          text: bits.join(" \xB7 "),
+          kind: g.tests === "fail" ? "fail" : g.dirty ? "warn" : ""
+        });
+      }
+      if (!chips.length) {
+        deskEl.hidden = true;
+        return;
+      }
+      deskEl.hidden = false;
+      for (const chip of chips) {
+        if (chip.perm) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = `chip ${chip.kind || ""}`.trim();
+          b.textContent = chip.text;
+          b.title = "Open System Settings and grant access";
+          b.addEventListener("click", () => {
+            if (pet) window.pet?.openPerm?.(chip.perm);
+            else showWhisper("On your Mac this opens System Settings so you can allow it.");
+          });
+          deskEl.appendChild(b);
+        } else {
+          const el = document.createElement("span");
+          el.className = `chip${chip.kind ? ` ${chip.kind}` : ""}`;
+          el.textContent = chip.text;
+          deskEl.appendChild(el);
+        }
+      }
+    }
+    function paintDesk() {
+      paintCodex();
+      paintPomo();
+      paintBrief();
+      paintWhisper();
+      paintAgents();
+      paintDeskChips();
+    }
+    function playNudge() {
+      engine.noteInput();
+      engine.play("exclaim");
+      engine.bounceOnce();
+      playSfx("dock");
+    }
+    function waitKeyOf(agents) {
+      const w = agents.find((a) => a.status === "waiting");
+      return w ? `${w.id}:${w.status}:${w.cwd}` : "";
+    }
+    function scheduleWebNudge(key) {
+      window.clearTimeout(nudgeTimer);
+      if (pet || !key || key === ackedWait) return;
+      nudgeTimer = window.setTimeout(() => {
+        if (waitKeyOf(desk.agents) !== key || key === ackedWait) return;
+        playNudge();
+        scheduleWebNudge(key);
+      }, 12e3);
+    }
+    function moodFromDesk(snap) {
+      if (snap.agents.some((a) => a.status === "error")) return "error";
+      if (snap.agents.some((a) => a.status === "waiting")) return "wait";
+      if (snap.agents.some((a) => a.status === "done")) return "joy";
+      if (snap.agents.some((a) => a.status === "running")) return "think";
+      if (snap.pomo?.running && snap.pomo.phase === "work") return "think";
+      if (snap.meeting?.on) return "look";
+      return "idle";
     }
     function applyCodexSnap(snap, fromWatch = true) {
-      const prev = codexSnap?.status;
-      codexSnap = snap;
-      paintCodex();
+      if (pet) return;
+      const prev = desk.agents[0]?.status;
+      if (snap.status === "idle") {
+        desk.agents = [];
+      } else {
+        desk.agents = [
+          {
+            id: (snap.tool || "agents").toLowerCase(),
+            name: snap.tool || "Agents",
+            status: snap.status,
+            label: snap.label,
+            threads: snap.threads,
+            cwd: snap.name,
+            processOn: true
+          }
+        ];
+      }
+      desk.digest = composeDigest(desk);
+      paintDesk();
+      engine.setMood(moodFromDesk(desk));
       if (!watchCodex || !fromWatch) return;
       if (snap.status === prev) return;
       engine.noteInput();
@@ -2510,7 +3068,108 @@
         engine.setExpression(5);
         engine.bounceOnce();
         playSfx("land");
-      } else if (snap.status === "error") engine.play("think");
+      } else if (snap.status === "error") {
+        engine.setExpression(17);
+        engine.play("think");
+      }
+    }
+    function applyDesk(snap, fromWatch = true) {
+      const prevAgents = desk.agents.map((a) => `${a.id}:${a.status}`).join("|");
+      const prevMeet = desk.meeting.next?.minutes;
+      const prevFail = desk.git.some((g) => g.tests === "fail");
+      desk = snap;
+      meetingOn = Boolean(snap.meeting?.on);
+      focusWork = Boolean(snap.focus?.workish);
+      paintDesk();
+      engine.setMood(moodFromDesk(snap));
+      syncAutoWork();
+      if (!fromWatch) return;
+      const nextAgents = snap.agents.map((a) => `${a.id}:${a.status}`).join("|");
+      if (nextAgents !== prevAgents) {
+        const waiting = snap.agents.find((a) => a.status === "waiting");
+        const running = snap.agents.find((a) => a.status === "running");
+        const errored = snap.agents.find((a) => a.status === "error");
+        const done = snap.agents.find((a) => a.status === "done");
+        engine.noteInput();
+        if (errored) {
+          engine.setExpression(17);
+          engine.play("think");
+        } else if (waiting) {
+          engine.play("exclaim");
+          engine.bounceOnce();
+          playSfx("dock");
+        } else if (done) {
+          engine.setExpression(5);
+          engine.bounceOnce();
+          playSfx("land");
+        } else if (running) engine.play("think");
+      }
+      if (engine.mood === "idle" && snap.meeting.next && snap.meeting.next.minutes >= 0 && snap.meeting.next.minutes !== prevMeet) {
+        engine.play("look");
+      }
+      if (!prevFail && snap.git.some((g) => g.tests === "fail")) engine.play("think");
+      const key = waitKeyOf(snap.agents);
+      if (!key) ackedWait = "";
+      scheduleWebNudge(key);
+    }
+    function showWhisper(text) {
+      whisper = text;
+      paintWhisper();
+      paintBrief();
+      if (!dockOpen) showDock(true);
+      window.clearTimeout(whisperTimer);
+      whisperTimer = window.setTimeout(() => {
+        if (whisper === text) {
+          whisper = "";
+          paintWhisper();
+          paintBrief();
+        }
+      }, 8e3);
+    }
+    function tickWebPomo() {
+      const snap = webPomo.tick();
+      desk = { ...desk, pomo: snap, digest: composeDigest({ ...desk, pomo: snap }) };
+      paintDesk();
+      if (snap.justEnded === "work") {
+        engine.setExpression(5);
+        engine.bounceOnce();
+        playSfx("land");
+        showWhisper("Break. Five minutes.");
+      } else if (snap.justEnded === "break") {
+        window.clearInterval(webPomoTimer);
+        webPomoTimer = 0;
+        showWhisper("Back to it.");
+      }
+    }
+    function toggleFocus() {
+      if (pet) {
+        window.pet?.pomoToggle?.();
+        return;
+      }
+      const snap = webPomo.toggle();
+      desk = { ...desk, pomo: snap, digest: composeDigest({ ...desk, pomo: snap }) };
+      paintDesk();
+      if (snap.running && !webPomoTimer) webPomoTimer = window.setInterval(tickWebPomo, 1e3);
+      if (!snap.running && snap.phase === "idle") {
+        window.clearInterval(webPomoTimer);
+        webPomoTimer = 0;
+      }
+      if (snap.running && snap.phase === "work") applyScene("work");
+    }
+    async function askBrief(useGrok) {
+      if (pet && window.pet?.brief) {
+        briefing = true;
+        paintBrief();
+        try {
+          const text = await window.pet.brief(useGrok);
+          if (text) showWhisper(text);
+        } finally {
+          briefing = false;
+          paintBrief();
+        }
+        return;
+      }
+      showWhisper(desk.digest || "All quiet.");
     }
     function sceneSfx() {
       return SCENES[engine.scene].idle.sfx;
@@ -2519,16 +3178,36 @@
     let autoWork = readAutoWork();
     let watchCodex = readCodexWatch();
     let meetingOn = false;
-    let codexSnap = null;
+    let focusWork = false;
+    let desk = {
+      digest: "All quiet.",
+      agents: [],
+      meeting: { on: false, next: null },
+      focus: { app: "", workish: false },
+      git: [],
+      pomo: { running: false, phase: "idle", remainingMs: 0, totalMs: 25 * 6e4 },
+      grok: { available: false, source: "none" },
+      perms: { calendar: true, automation: true, grokBot: true, missing: [] },
+      quiet: false
+    };
+    let whisper = "";
+    let whisperTimer = 0;
+    let ackedWait = "";
+    let nudgeTimer = 0;
+    let briefing = false;
     let sceneBeforeAuto = null;
     let userPinned = false;
     let lastTrayAt = 0;
+    const webPomo = createPomo();
+    let webPomoTimer = 0;
     const trayCanvas = document.createElement("canvas");
     trayCanvas.width = 44;
     trayCanvas.height = 44;
     const trayCtx = trayCanvas.getContext("2d");
+    let hoursOn = inWorkHours();
     function shouldAutoWork() {
-      return autoWork && (meetingOn || inWorkHours());
+      hoursOn = inWorkHours(/* @__PURE__ */ new Date(), hoursOn);
+      return autoWork && (meetingOn || hoursOn || focusWork);
     }
     function applyScene(id, fromUser = true) {
       if (fromUser && shouldAutoWork() && id !== "work") userPinned = true;
@@ -2573,9 +3252,11 @@
     function showDock(open) {
       dockOpen = open;
       stage.classList.toggle("open", open);
+      paintWhisper();
       if (open) {
         interactOn();
         if (sceneSfx()) playSfx("dock");
+        if (web) placeWeb();
       } else {
         interactOff();
       }
@@ -2604,6 +3285,10 @@
       meetingOn = Boolean(on);
       syncAutoWork();
     });
+    const offFocus = window.pet?.onFocus?.((on) => {
+      focusWork = Boolean(on);
+      syncAutoWork();
+    });
     const offSize = window.pet?.onSize?.((id) => {
       if (isPetSize(id) && id !== petSize) applyPetSize(id, true);
     });
@@ -2622,8 +3307,26 @@
       if (on === watchCodex) return;
       watchCodex = on;
       writeCodexWatch(on);
-      paintCodex();
+      paintDesk();
     });
+    const offDesk = window.pet?.onDesk?.((snap) => {
+      applyDesk(snap);
+    });
+    const offWhisper = window.pet?.onWhisper?.((text) => {
+      showWhisper(String(text || ""));
+    });
+    const offPomoEnded = window.pet?.onPomoEnded?.((phase) => {
+      engine.noteInput();
+      if (phase === "work") {
+        engine.setExpression(5);
+        engine.bounceOnce();
+        playSfx("land");
+      } else {
+        engine.play("exclaim");
+        engine.bounceOnce();
+      }
+    });
+    const offNudge = window.pet?.onNudge?.(() => playNudge());
     if (pet) {
       wrap.addEventListener("pointerenter", onFaceEnter);
       wrap.addEventListener("pointerleave", onFaceLeave);
@@ -2737,6 +3440,8 @@
       else if (e2.key === "1") applyScene("work");
       else if (e2.key === "2") applyScene("companion");
       else if (e2.key === "m" || e2.key === "M") setMuted(!isMuted());
+      else if (e2.key === "w" || e2.key === "W") void askBrief(false);
+      else if (e2.key === "f" || e2.key === "F") toggleFocus();
     };
     window.addEventListener("keydown", onKey);
     sceneBar.replaceChildren();
@@ -2776,12 +3481,25 @@
     paintPresets();
     if (prefBar) {
       prefBar.replaceChildren();
+      const pomoBtn = document.createElement("button");
+      pomoBtn.type = "button";
+      pomoBtn.dataset.pref = "pomo";
+      pomoBtn.title = "25-minute focus \xB7 F";
+      pomoBtn.addEventListener("click", () => toggleFocus());
+      prefBar.appendChild(pomoBtn);
+      const briefBtn = document.createElement("button");
+      briefBtn.type = "button";
+      briefBtn.dataset.pref = "brief";
+      briefBtn.title = "One-line status \xB7 W";
+      briefBtn.addEventListener("click", () => void askBrief(Boolean(pet)));
+      prefBar.appendChild(briefBtn);
       Object.keys(PET_SIZES).forEach((id) => {
         const b = document.createElement("button");
         b.type = "button";
         b.dataset.size = id;
         b.textContent = PET_SIZES[id].label;
         b.title = PET_SIZES[id].hint;
+        b.classList.add("dim");
         b.addEventListener("click", () => applyPetSize(id));
         prefBar.appendChild(b);
       });
@@ -2789,12 +3507,14 @@
       muteBtn.type = "button";
       muteBtn.dataset.pref = "mute";
       muteBtn.title = "Sound on \xB7 M";
+      muteBtn.classList.add("dim");
       muteBtn.addEventListener("click", () => setMuted(!isMuted()));
       prefBar.appendChild(muteBtn);
       const autoBtn = document.createElement("button");
       autoBtn.type = "button";
       autoBtn.dataset.pref = "auto";
       autoBtn.title = "Work hours 9\u201318 and meetings switch to Work";
+      autoBtn.classList.add("dim");
       autoBtn.addEventListener("click", () => {
         autoWork = !autoWork;
         writeAutoWork(autoWork);
@@ -2808,6 +3528,7 @@
       codexBtn.type = "button";
       codexBtn.dataset.pref = "codex";
       codexBtn.title = "Watch local Codex, Claude, Cursor, Gemini, and other agents";
+      codexBtn.classList.add("dim");
       codexBtn.addEventListener("click", () => {
         watchCodex = !watchCodex;
         writeCodexWatch(watchCodex);
@@ -2819,12 +3540,13 @@
       paintMute();
       paintSize();
       paintAuto();
-      paintCodex();
+      paintDesk();
     }
     window.pet?.setScene?.(engine.scene);
     window.pet?.setMuted?.(isMuted());
     window.pet?.setAutoWork?.(autoWork);
     window.pet?.setCodexWatch?.(watchCodex);
+    if (web) applyDesk(demoDesk(), false);
     if (studio && opts.studioHref) {
       studio.hidden = false;
       studio.href = opts.studioHref;
@@ -2868,7 +3590,28 @@
     function placeWeb() {
       if (!web) return;
       webSide = pickDockSide(pos.x, pos.y, area());
+      keepDockOnScreen();
       applyWebPos();
+    }
+    function keepDockOnScreen() {
+      if (!web) return;
+      const scale = fitScale();
+      const o = BALL_IN_STAGE[webSide];
+      const a = area();
+      if (webSide === "bottom") {
+        const bottom = pos.y + (STAGE.h - o.y) * scale;
+        if (bottom > a.h - 8) pos.y -= bottom - (a.h - 8);
+      } else if (webSide === "top") {
+        const top = pos.y - o.y * scale;
+        if (top < 36) pos.y += 36 - top;
+      } else if (webSide === "right") {
+        const right = pos.x + (STAGE.w - o.x) * scale;
+        if (right > a.w - 8) pos.x -= right - (a.w - 8);
+      } else if (webSide === "left") {
+        const left = pos.x - o.x * scale;
+        if (left < 8) pos.x += 8 - left;
+      }
+      pos = clampPoint(pos.x, pos.y, a);
     }
     function saveWebPos() {
       if (!web) return;
@@ -3081,13 +3824,21 @@
       if (typeof offVisible === "function") offVisible();
       if (typeof offTrayMute === "function") offTrayMute();
       if (typeof offMeeting === "function") offMeeting();
+      if (typeof offFocus === "function") offFocus();
       if (typeof offSize === "function") offSize();
       if (typeof offAuto === "function") offAuto();
       if (typeof offCodex === "function") offCodex();
       if (typeof offCodexWatch === "function") offCodexWatch();
+      if (typeof offDesk === "function") offDesk();
+      if (typeof offWhisper === "function") offWhisper();
+      if (typeof offPomoEnded === "function") offPomoEnded();
+      if (typeof offNudge === "function") offNudge();
       if (typeof offDragArmed === "function") offDragArmed();
       if (typeof offDragFinished === "function") offDragFinished();
       window.clearInterval(autoTimer);
+      window.clearTimeout(whisperTimer);
+      window.clearTimeout(nudgeTimer);
+      window.clearInterval(webPomoTimer);
     };
   }
 

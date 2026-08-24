@@ -7,7 +7,7 @@ export const PET_SIZES = {
 };
 
 export const STAGE_W = 580;
-export const DOCK_ROOM = 160;
+export const DOCK_ROOM = 230;
 
 export function isPetSize(id) {
   return id === "s" || id === "m" || id === "l";

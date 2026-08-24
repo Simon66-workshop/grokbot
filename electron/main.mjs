@@ -2,9 +2,25 @@ import { app, BrowserWindow, ipcMain, screen, Tray, Menu, nativeImage, Notificat
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
+import os from "node:os";
 import { execFile } from "node:child_process";
 import { layoutFor, isPetSize } from "./layout.mjs";
-import { notifyCopy, readCodexSnapshot } from "./codex.mjs";
+import { notifyCopy, readCodexSnapshot, statusLabel } from "./codex.mjs";
+import { buildDesk, detectMeetingState, detectMacScene, openAgent, scanGit } from "./desk.mjs";
+import { createPomo, EMPTY_DESK, formatRemain } from "./desk-core.mjs";
+import { grokBrief, grokEnv, grokStatus } from "./grok.mjs";
+import { readGrokBotApp } from "./grok-bot-app.mjs";
+import { openPerm, probePerms } from "./perms.mjs";
+import {
+  NUDGE_MS,
+  OVERLAY_MS,
+  bannersQuiet,
+  nextNudge,
+  parseInbox,
+  parseNudgeUrl,
+  waitKey,
+} from "./nudge.mjs";
+import { AGENT_RANK, createGate, createLatch, soonHyst, stampMeeting, tickMeeting } from "./hysteresis.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const POS_FILE = path.join(app.getPath("userData"), "pet-pos.json");
@@ -28,9 +44,33 @@ let lastIconAt = 0;
 const DRAG_ARM_PX = 6;
 let drag = null;
 let codexTimer = null;
-let lastCodex = { status: "idle", label: "idle", name: "", threads: 0, processOn: false, tool: "" };
+let lastCodex = { status: "idle", label: "idle", name: "", threads: 0, processOn: false, tool: "", agents: [] };
 let lastCodexNote = { status: "idle", at: 0 };
 let codexReady = false;
+let lastDesk = { ...EMPTY_DESK };
+let lastMeetNote = "";
+let lastGitNote = "";
+let grokInfo = { available: false, source: "none" };
+const pomo = createPomo();
+let pomoTimer = null;
+let lastCal = { on: false, next: null };
+let focusWork = false;
+let lastNudgeAt = 0;
+let ackedWaitKey = "";
+let overlay = null;
+let skippedNote = null;
+let wasQuiet = false;
+let pollTick = 0;
+let cachedGrok = { at: 0, value: { available: false, source: "none" } };
+let cachedPerms = { at: 0, value: EMPTY_DESK.perms };
+let cachedGit = { at: 0, key: "", value: [] };
+let lastInboxMtime = 0;
+const meetingGate = createGate({ enterMs: 0, exitMs: 16_000 });
+const focusGate = createGate({ enterMs: 8_000, exitMs: 16_000 });
+const quietGate = createGate({ enterMs: 0, exitMs: 15_000 });
+const agentLatches = new Map();
+const lastAgent = new Map();
+let lastSoon = false;
 
 function loadPrefs() {
   try {
@@ -286,6 +326,24 @@ function applyAppMenu() {
         { role: "about" },
         { type: "separator" },
         {
+          label: lastDesk.digest || "What's up",
+          click: () => void speakBrief(false),
+        },
+        {
+          label: grokInfo.available ? "Grok Brief" : "Grok Brief (install grok CLI)",
+          enabled: true,
+          click: () => void speakBrief(true),
+        },
+        {
+          label: pomo.snap().running
+            ? `Focus ${formatRemain(pomo.snap().remainingMs)}`
+            : pomo.snap().phase === "break"
+              ? `Break ${formatRemain(pomo.snap().remainingMs)}`
+              : "Start Focus",
+          click: () => togglePomo(),
+        },
+        { type: "separator" },
+        {
           label: "Mute",
           type: "checkbox",
           checked: muted,
@@ -310,7 +368,25 @@ function applyMenus() {
 
 function applyTrayMenu() {
   const login = app.getLoginItemSettings().openAtLogin;
+  const p = pomo.snap();
   const menu = Menu.buildFromTemplate([
+    {
+      label: lastDesk.digest || "What's up",
+      click: () => void speakBrief(false),
+    },
+    {
+      label: grokInfo.available ? "Grok Brief" : "Grok Brief (uses grok CLI)",
+      click: () => void speakBrief(true),
+    },
+    {
+      label: p.running
+        ? `Focus ${formatRemain(p.remainingMs)}`
+        : p.phase === "break"
+          ? `Break ${formatRemain(p.remainingMs)}`
+          : "Start Focus",
+      click: () => togglePomo(),
+    },
+    { type: "separator" },
     {
       label: visible ? "Hide GrokBot" : "Show GrokBot",
       click: () => toggleVisible(),
@@ -381,8 +457,7 @@ function applyTrayMenu() {
         savePrefs();
         win?.webContents.send("pet-codex-watch", watchCodex);
         applyMenus();
-        if (watchCodex) void pollCodex();
-        else emitCodex({ status: "idle", label: "idle", name: "", threads: 0, processOn: false, tool: "" }, true);
+        void pollDesk();
       },
     },
     {
@@ -420,7 +495,7 @@ function applyTrayMenu() {
     tray = new Tray(img.resize({ width: 22, height: 22 }));
     tray.on("click", () => toggleVisible());
   }
-  tray.setToolTip(lastCodex.status === "idle" ? "GrokBot" : `GrokBot · ${lastCodex.tool || "Agents"} ${lastCodex.label}`);
+  tray.setToolTip(lastDesk.digest && lastDesk.digest !== "All quiet." ? `GrokBot · ${lastDesk.digest}` : "GrokBot");
   tray.setContextMenu(menu);
   applyAppMenu();
 }
@@ -461,46 +536,45 @@ function toggleVisible() {
   setVisible(!visible);
 }
 
-function runCmd(bin, args, timeout) {
+function runExec(bin, args, timeout) {
   return new Promise((resolve) => {
-    execFile(bin, args, { timeout }, (err, stdout) => {
-      resolve(err ? "" : String(stdout || ""));
+    execFile(bin, args, { timeout, env: grokEnv() }, (err, stdout) => {
+      resolve({ ok: !err, out: String(stdout || "") });
     });
   });
 }
 
-const MEET_RE = /zoom(\.us)?|facetime|webex|microsoft teams|^teams$|ciscowebex|google meet/i;
-
-async function detectMeeting() {
-  if (process.platform === "darwin") {
-    const named = await runCmd(
-      "osascript",
-      ["-e", 'tell application "System Events" to get name of every process whose background only is false'],
-      2000,
-    );
-    if (named && named.split(",").some((n) => MEET_RE.test(n.trim()))) return true;
-  }
-  const pg = await runCmd("pgrep", ["-il", "zoom|FaceTime|Webex|Teams"], 1500);
-  return Boolean(pg && pg.trim());
+function runCmd(bin, args, timeout) {
+  return runExec(bin, args, timeout).then((r) => (r.ok ? r.out : ""));
 }
 
-async function detectCalendarBusy() {
-  if (process.platform !== "darwin") return false;
-  const script = `
-    set nowDate to current date
-    set soon to nowDate + 8 * minutes
-    tell application "Calendar"
-      repeat with cal in calendars
-        try
-          set evs to (every event of cal whose start date is less than or equal to soon and end date is greater than or equal to nowDate)
-          if (count of evs) > 0 then return "1"
-        end try
-      end repeat
-    end tell
-    return "0"
-  `;
-  const out = await runCmd("osascript", ["-e", script], 2500);
-  return out.trim() === "1";
+function latchAgents(agents, now) {
+  const seen = new Set();
+  const out = [];
+  for (const a of agents || []) {
+    seen.add(a.id);
+    let L = agentLatches.get(a.id);
+    if (!L) {
+      L = createLatch({ rank: AGENT_RANK, enterMs: 0, exitMs: 12_000 });
+      agentLatches.set(a.id, L);
+    }
+    const status = L.sample(a.status, now);
+    const row = status === a.status ? a : { ...a, status, label: statusLabel(status) };
+    lastAgent.set(a.id, row);
+    out.push(row);
+  }
+  for (const [id, L] of agentLatches) {
+    if (seen.has(id)) continue;
+    const held = L.sample("idle", now);
+    if (held === "idle") {
+      agentLatches.delete(id);
+      lastAgent.delete(id);
+      continue;
+    }
+    const prev = lastAgent.get(id);
+    if (prev) out.push({ ...prev, status: held, label: statusLabel(held) });
+  }
+  return out;
 }
 
 function emitMeeting(on) {
@@ -509,74 +583,375 @@ function emitMeeting(on) {
   win?.webContents.send("pet-meeting", meeting);
 }
 
-function startFocusWatch() {
-  const pollMeet = async () => {
-    if (!visible) return;
-    try {
-      emitMeeting(await detectMeeting());
-    } catch {
-      /* ignore */
+function currentQuiet() {
+  return Boolean(lastDesk.quiet) || bannersQuiet({ meeting, meetingOn: lastDesk.meeting?.on, pomo: pomo.snap() });
+}
+
+function showNote(title, body, onClick) {
+  if (currentQuiet()) {
+    skippedNote = { title, body, onClick };
+    return;
+  }
+  skippedNote = null;
+  if (!Notification.isSupported()) return;
+  try {
+    const n = new Notification({ title, body, silent: muted });
+    if (typeof onClick === "function") n.on("click", onClick);
+    n.show();
+  } catch {
+    /* ignore */
+  }
+}
+
+function inboxPath() {
+  return path.join(app.getPath("userData"), "inbox.json");
+}
+
+function applyExternalNudge(msg, { poll = true } = {}) {
+  if (!msg) return;
+  if (msg.kind === "open") {
+    void jumpToAgent(msg.id || "grok-bot");
+    return;
+  }
+  overlay = { ...msg, at: Date.now() };
+  ackedWaitKey = "";
+  lastNudgeAt = Date.now();
+  if (poll) void pollDesk();
+}
+
+function readInbox() {
+  const file = inboxPath();
+  try {
+    const st = fs.statSync(file);
+    if (st.mtimeMs <= lastInboxMtime) return;
+    lastInboxMtime = st.mtimeMs;
+    const msg = parseInbox(fs.readFileSync(file, "utf8"));
+    if (msg) applyExternalNudge(msg, { poll: false });
+  } catch {
+    /* none */
+  }
+}
+
+function installNudgeHook() {
+  const src = path.join(here, "../mac/nudge-grokbot.sh");
+  try {
+    const dest = path.join(app.getPath("userData"), "nudge-grokbot.sh");
+    fs.copyFileSync(src, dest);
+    fs.chmodSync(dest, 0o755);
+  } catch {
+    /* ignore */
+  }
+  const grokDir = path.join(os.homedir(), ".grok", "hooks");
+  try {
+    if (fs.existsSync(path.join(os.homedir(), ".grok"))) {
+      fs.mkdirSync(grokDir, { recursive: true });
+      const dest = path.join(grokDir, "grokbot-nudge.sh");
+      fs.copyFileSync(src, dest);
+      fs.chmodSync(dest, 0o755);
     }
-  };
-  const pollCal = async () => {
-    if (!visible || !autoWork) return;
-    try {
-      if (await detectCalendarBusy()) emitMeeting(true);
-    } catch {
-      /* ignore */
+  } catch {
+    /* ignore */
+  }
+}
+
+function handleNudgeUrl(raw) {
+  const msg = parseNudgeUrl(raw);
+  if (msg) applyExternalNudge(msg);
+}
+
+function emitDesk(desk, { silent = false } = {}) {
+  lastDesk = desk;
+  win?.webContents.send("pet-desk", desk);
+  if (tray && !tray.isDestroyed()) {
+    tray.setToolTip(desk.digest && desk.digest !== "All quiet." ? `GrokBot · ${desk.digest}` : "GrokBot");
+  }
+  if (silent) return;
+  const next = desk.meeting?.next;
+  if (next && next.minutes >= 0 && !desk.meeting.on) {
+    const bucket = next.minutes <= 5 ? 5 : 15;
+    const key = `${next.title}|${bucket}`;
+    if (key !== lastMeetNote) {
+      lastMeetNote = key;
+      showNote(bucket === 5 ? "Stand up" : "Coming up", `${next.title} in ${next.minutes}m`, () => {
+        void runCmd("open", ["-a", "Calendar"], 2000);
+      });
     }
-  };
-  pollMeet();
-  meetTimer = setInterval(pollMeet, 15_000);
-  calTimer = setInterval(pollCal, 90_000);
+  }
+  const fail = (desk.git || []).find((g) => g.tests === "fail");
+  if (fail) {
+    const key = `${fail.repo}-fail`;
+    if (key !== lastGitNote) {
+      lastGitNote = key;
+      showNote("Tests failed", `${fail.repo} is red`);
+    }
+  } else if ((desk.git || []).some((g) => g.tests === "pass")) {
+    lastGitNote = "";
+  }
 }
 
 function emitCodex(snap, silent = false) {
   lastCodex = snap;
   win?.webContents.send("pet-codex", snap);
-  if (tray && !tray.isDestroyed()) {
-    tray.setToolTip(snap.status === "idle" ? "GrokBot" : `GrokBot · ${snap.tool || "Agents"} ${snap.label}`);
-  }
-  if (silent || !watchCodex) {
+  const grokAlert = (snap.agents || []).some(
+    (a) => a.id === "grok-bot" && (a.status === "waiting" || a.status === "error" || a.status === "done"),
+  );
+  if (silent) {
     lastCodexNote = { status: snap.status, at: Date.now() };
     return;
   }
+  if (!watchCodex && !grokAlert) return;
   if (snap.status !== "waiting" && snap.status !== "done" && snap.status !== "error") return;
   const now = Date.now();
   if (snap.status === lastCodexNote.status && now - lastCodexNote.at < 20_000) return;
   lastCodexNote = { status: snap.status, at: now };
   const copy = notifyCopy(snap.status, snap.name, snap.threads, snap.tool || "Agents");
-  if (!copy || !Notification.isSupported()) return;
+  if (!copy) return;
+  const agentId = snap.agents?.[0]?.id || "";
+  showNote(copy.title, copy.body, () => {
+    void jumpToAgent(agentId);
+  });
+}
+
+async function jumpToAgent(id) {
+  setVisible(true);
+  const agent = (lastDesk.agents || lastCodex.agents || []).find((a) => a.id === id);
+  await openAgent(id, { runExec, cwd: agent?.path || "" });
+}
+
+async function pollDesk({ withCal = false } = {}) {
   try {
-    new Notification({ title: copy.title, body: copy.body, silent: muted }).show();
-  } catch {
-    /* ignore */
+    pollTick += 1;
+    const now = Date.now();
+    readInbox();
+    if (overlay && now - overlay.at > OVERLAY_MS) overlay = null;
+
+    if (now - cachedGrok.at > 60_000) {
+      grokInfo = await grokStatus(runCmd);
+      cachedGrok = { at: now, value: grokInfo };
+    } else grokInfo = cachedGrok.value;
+
+    const sceneJob =
+      process.platform === "darwin"
+        ? detectMacScene(runCmd)
+        : Promise.resolve({
+            focus: lastDesk.focus,
+            meetingApp: meeting,
+            grokBotWindows: "",
+            grokBotWaiting: false,
+          });
+    const wantCal = withCal || pollTick % 8 === 1;
+    const jobs = [
+      watchCodex ? readCodexSnapshot({ runCmd }) : Promise.resolve({ ...lastCodex, agents: (lastCodex.agents || []).filter((a) => a.id === "grok-bot") }),
+      sceneJob,
+    ];
+    if (wantCal) jobs.push(detectMeetingState(runCmd));
+    const [agentsSnap, scene, calMaybe] = await Promise.all(jobs);
+    if (wantCal && calMaybe) lastCal = stampMeeting(calMaybe, now);
+    const cal = tickMeeting(lastCal, now);
+    const focus = scene.focus || lastDesk.focus || { app: "", workish: false };
+    const sceneOk = Boolean(scene.focus?.app || scene.grokBotWindows);
+    const grokBot = await readGrokBotApp({
+      runCmd,
+      skipFiles: pollTick % 3 !== 1,
+      windows: sceneOk ? scene.grokBotWindows : undefined,
+    });
+    if (scene.grokBotWaiting) {
+      grokBot.status = "waiting";
+      grokBot.label = "needs you";
+      grokBot.threads = Math.max(grokBot.threads, 1);
+    }
+    const rawAgents = (agentsSnap.agents || []).filter((a) => a.id !== "grok-bot");
+    if (grokBot.status !== "idle") rawAgents.unshift(grokBot);
+    if (
+      overlay?.status === "waiting" &&
+      !rawAgents.some((a) => a.id === "grok-bot" && a.status === "waiting")
+    ) {
+      rawAgents.unshift({
+        id: "grok-bot",
+        name: overlay.tool || "Grok Bot",
+        status: "waiting",
+        label: "needs you",
+        threads: 1,
+        cwd: overlay.name || "",
+        path: "",
+        processOn: true,
+      });
+    }
+    const agents = latchAgents(rawAgents, now);
+    const merged = {
+      ...agentsSnap,
+      agents,
+      status: agents[0]?.status || "idle",
+      tool: agents[0]?.name || agentsSnap.tool,
+      name: agents[0]?.cwd || agentsSnap.name,
+    };
+    if (watchCodex || agents.some((a) => a.id === "grok-bot")) {
+      if (!codexReady) {
+        codexReady = true;
+        const keepQuiet = merged.status !== "waiting" && merged.status !== "error";
+        emitCodex(merged, keepQuiet);
+      } else {
+        const changed =
+          merged.status !== lastCodex.status ||
+          merged.threads !== lastCodex.threads ||
+          merged.name !== lastCodex.name;
+        if (changed) emitCodex(merged, currentQuiet() && merged.status !== "error");
+      }
+    }
+
+    const key = waitKey(merged);
+    const nudge = nextNudge({ status: merged.status, key, now, lastNudgeAt, ackedKey: ackedWaitKey, interval: NUDGE_MS });
+    if (nudge.reset) {
+      lastNudgeAt = 0;
+      ackedWaitKey = "";
+    } else if (nudge.fire) {
+      lastNudgeAt = now;
+      if (!nudge.first) win?.webContents.send("pet-nudge", { tool: merged.tool, name: merged.name, repeat: true });
+    }
+
+    focusWork = focusGate.sample(Boolean(focus.workish), now);
+    const meetingOn = meetingGate.sample(Boolean(scene.meetingApp || cal.on), now);
+    emitMeeting(meetingOn);
+    const next = cal.next;
+    lastSoon = soonHyst(next?.minutes, lastSoon);
+    const meetingSnap = { on: meetingOn, next: lastSoon ? next : meetingOn ? next : null };
+
+    const permTtl = cachedPerms.value?.missing?.length ? 20_000 : 90_000;
+    if (now - cachedPerms.at > permTtl) {
+      const nextPerms = await probePerms(runCmd, { grokBotRunning: grokBot.processOn });
+      if (grokBot.processOn && grokBot.windowOk === false) {
+        nextPerms.grokBot = false;
+        if (!nextPerms.missing.some((m) => m.id === "grok-bot")) {
+          nextPerms.missing.push({ id: "grok-bot", label: "Allow Grok Bot" });
+        }
+      }
+      cachedPerms = { at: now, value: nextPerms };
+    }
+
+    const cwds = agents.map((a) => a.path).filter(Boolean);
+    const gitKey = cwds.join("|");
+    if (gitKey !== cachedGit.key || now - cachedGit.at > 30_000) {
+      cachedGit = { at: now, key: gitKey, value: gitKey ? await scanGit(cwds, runCmd) : [] };
+    }
+
+    const quiet = quietGate.sample(bannersQuiet({ meeting: meetingOn, meetingOn, pomo: pomo.snap() }), now);
+    if (wasQuiet && !quiet && skippedNote && merged.status === "waiting") {
+      const pending = skippedNote;
+      skippedNote = null;
+      showNote(pending.title, pending.body, pending.onClick);
+    }
+    wasQuiet = quiet;
+
+    const desk = buildDesk({
+      agents,
+      meeting: meetingSnap,
+      focus: { ...focus, workish: focusWork },
+      git: cachedGit.value,
+      pomo: pomo.snap(),
+      grok: { available: grokInfo.available, source: grokInfo.source },
+      perms: cachedPerms.value,
+      quiet,
+    });
+    emitDesk(desk);
+    win?.webContents.send("pet-focus", focusWork);
+  } catch (err) {
+    console.error("pollDesk", err);
   }
 }
 
-async function pollCodex() {
-  if (!watchCodex) return;
-  try {
-    const snap = await readCodexSnapshot({ runCmd });
-    if (!codexReady) {
-      codexReady = true;
-      emitCodex(snap, true);
-      return;
-    }
-    const changed =
-      snap.status !== lastCodex.status ||
-      snap.threads !== lastCodex.threads ||
-      snap.name !== lastCodex.name;
-    if (changed) emitCodex(snap);
-  } catch {
-    /* ignore */
+function tickPomo() {
+  const snap = pomo.tick();
+  lastDesk = { ...lastDesk, pomo: snap, digest: lastDesk.digest };
+  const desk = buildDesk({
+    agents: lastDesk.agents,
+    meeting: lastDesk.meeting,
+    focus: lastDesk.focus,
+    git: lastDesk.git,
+    pomo: snap,
+    grok: lastDesk.grok,
+    perms: lastDesk.perms,
+    quiet: currentQuiet(),
+  });
+  emitDesk(desk, { silent: true });
+  if (snap.justEnded === "work") {
+    showNote("Break", "Focus block done. Five minutes.");
+    win?.webContents.send("pet-pomo-ended", "work");
+    applyMenus();
+  } else if (snap.justEnded === "break") {
+    showNote("Back", "Break's over.");
+    win?.webContents.send("pet-pomo-ended", "break");
+    stopPomoClock();
+    applyMenus();
   }
 }
+
+function startPomoClock() {
+  if (pomoTimer) return;
+  pomoTimer = setInterval(tickPomo, 1000);
+}
+
+function stopPomoClock() {
+  if (!pomoTimer) return;
+  clearInterval(pomoTimer);
+  pomoTimer = null;
+}
+
+function togglePomo() {
+  const snap = pomo.toggle();
+  if (snap.running) startPomoClock();
+  else if (snap.phase === "idle") stopPomoClock();
+  const desk = buildDesk({
+    agents: lastDesk.agents,
+    meeting: lastDesk.meeting,
+    focus: lastDesk.focus,
+    git: lastDesk.git,
+    pomo: snap,
+    grok: lastDesk.grok,
+    perms: lastDesk.perms,
+    quiet: currentQuiet(),
+  });
+  emitDesk(desk, { silent: true });
+  applyMenus();
+  return snap;
+}
+
+function skipPomo() {
+  const snap = pomo.skip();
+  if (snap.phase === "break" && snap.running) startPomoClock();
+  else stopPomoClock();
+  const desk = buildDesk({
+    agents: lastDesk.agents,
+    meeting: lastDesk.meeting,
+    focus: lastDesk.focus,
+    git: lastDesk.git,
+    pomo: snap,
+    grok: lastDesk.grok,
+    perms: lastDesk.perms,
+    quiet: currentQuiet(),
+  });
+  emitDesk(desk, { silent: true });
+  applyMenus();
+  return snap;
+}
+
+async function speakBrief(useGrok) {
+  setVisible(true);
+  let text = lastDesk.digest || "All quiet.";
+  if (useGrok) {
+    const result = await grokBrief(text, { runCmd });
+    if (result.text) text = result.text;
+  }
+  win?.webContents.send("pet-whisper", text);
+  showNote("GrokBot", text);
+  return text;
+}
+
+function startFocusWatch() {}
 
 function startCodexWatch() {
   if (codexTimer) return;
-  void pollCodex();
-  codexTimer = setInterval(() => void pollCodex(), 8_000);
+  void pollDesk({ withCal: true });
+  codexTimer = setInterval(() => void pollDesk(), 8_000);
 }
 
 function restoreToDisplay(d) {
@@ -618,6 +993,7 @@ function cleanup() {
   if (drag?.timer) clearInterval(drag.timer);
   drag = null;
   stopCursor();
+  stopPomoClock();
   if (meetTimer) clearInterval(meetTimer);
   if (calTimer) clearInterval(calTimer);
   if (codexTimer) clearInterval(codexTimer);
@@ -689,7 +1065,9 @@ function create() {
     win.webContents.send("pet-auto-work", autoWork);
     win.webContents.send("pet-codex-watch", watchCodex);
     win.webContents.send("pet-codex", lastCodex);
+    win.webContents.send("pet-desk", lastDesk);
     win.webContents.send("pet-meeting", meeting);
+    win.webContents.send("pet-focus", focusWork);
     const b = ballScreen();
     placeWindow(b.x, b.y, side);
   });
@@ -701,6 +1079,7 @@ function create() {
   if (visible) startCursor();
 
   applyTrayMenu();
+  installNudgeHook();
   startFocusWatch();
   startCodexWatch();
   wireDisplays();
@@ -755,11 +1134,29 @@ ipcMain.on("pet-set-codex-watch", (_e, on) => {
   watchCodex = Boolean(on);
   savePrefs();
   applyTrayMenu();
-  if (watchCodex) void pollCodex();
-  else emitCodex({ status: "idle", label: "idle", name: "", threads: 0, processOn: false, tool: "" }, true);
+  void pollDesk();
 });
 
 ipcMain.on("pet-hide", () => setVisible(false));
+
+ipcMain.handle("pet-brief", (_e, useGrok) => speakBrief(Boolean(useGrok)));
+ipcMain.on("pet-pomo-toggle", () => togglePomo());
+ipcMain.on("pet-pomo-skip", () => skipPomo());
+ipcMain.on("pet-open-agent", (_e, id) => {
+  if (typeof id === "string" && id) {
+    const waiting = (lastDesk.agents || []).find((a) => a.id === id && a.status === "waiting");
+    if (waiting) ackedWaitKey = waitKey({ status: "waiting", tool: waiting.name, name: waiting.cwd });
+    void jumpToAgent(id);
+  }
+});
+ipcMain.on("pet-ack-agent", (_e, id) => {
+  const waiting = (lastDesk.agents || []).find((a) => a.id === id) || lastDesk.agents?.find((a) => a.status === "waiting");
+  if (waiting) ackedWaitKey = waitKey({ status: "waiting", tool: waiting.name, name: waiting.cwd });
+  else ackedWaitKey = waitKey(lastCodex);
+});
+ipcMain.on("pet-open-perm", (_e, id) => {
+  if (typeof id === "string" && id) void openPerm(id, { runExec, runCmd });
+});
 
 ipcMain.on("pet-tray-icon", (_e, dataUrl) => {
   if (!tray || typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/png")) return;
@@ -781,11 +1178,24 @@ if (process.platform !== "darwin") {
   app.commandLine.appendSwitch("enable-transparent-visuals");
 }
 
+if (process.defaultApp) {
+  if (process.argv.length >= 2) app.setAsDefaultProtocolClient("grokbot", process.execPath, [path.resolve(process.argv[1])]);
+} else {
+  app.setAsDefaultProtocolClient("grokbot");
+}
+
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+  handleNudgeUrl(url);
+});
+
 const locked = app.requestSingleInstanceLock();
 if (!locked) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
+  app.on("second-instance", (_e, argv) => {
+    const url = (argv || []).find((a) => String(a).startsWith("grokbot:"));
+    if (url) handleNudgeUrl(url);
     if (!win) create();
     else setVisible(true);
   });

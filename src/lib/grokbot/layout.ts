@@ -13,7 +13,7 @@ export const PET_SIZES: Record<
 };
 
 export const STAGE_W = 580;
-export const DOCK_ROOM = 160;
+export const DOCK_ROOM = 230;
 export const SIZE_KEY = "grok-pet-size";
 export const AUTO_WORK_KEY = "grok-auto-work";
 export const CODEX_WATCH_KEY = "grok-codex-watch";
@@ -90,7 +90,7 @@ export function layoutFor(id: PetSizeId) {
     box,
     faceScale: size.faceScale,
     inset,
-    dockMain: box - 40,
+    dockMain: box - 72,
     faceSideTop: Math.round((h - box) / 2),
     ball: {
       bottom: { x: STAGE_W / 2, y: box / 2 },
@@ -101,9 +101,10 @@ export function layoutFor(id: PetSizeId) {
   };
 }
 
-export function inWorkHours(d = new Date()) {
+export function inWorkHours(d = new Date(), wasOn = false) {
   const day = d.getDay();
   if (day === 0 || day === 6) return false;
   const m = d.getHours() * 60 + d.getMinutes();
+  if (wasOn) return m >= 8 * 60 + 45 && m < 18 * 60 + 20;
   return m >= 9 * 60 && m < 18 * 60;
 }

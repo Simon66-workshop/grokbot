@@ -56,6 +56,21 @@ contextBridge.exposeInMainWorld("pet", {
   onCodexWatch(fn) {
     return listen("pet-codex-watch", fn);
   },
+  onDesk(fn) {
+    return listen("pet-desk", fn);
+  },
+  onWhisper(fn) {
+    return listen("pet-whisper", fn);
+  },
+  onFocus(fn) {
+    return listen("pet-focus", fn);
+  },
+  onPomoEnded(fn) {
+    return listen("pet-pomo-ended", fn);
+  },
+  onNudge(fn) {
+    return listen("pet-nudge", fn);
+  },
   setScene(scene) {
     ipcRenderer.send("pet-set-scene", scene);
   },
@@ -70,6 +85,24 @@ contextBridge.exposeInMainWorld("pet", {
   },
   setCodexWatch(on) {
     ipcRenderer.send("pet-set-codex-watch", on);
+  },
+  brief(useGrok) {
+    return ipcRenderer.invoke("pet-brief", Boolean(useGrok));
+  },
+  pomoToggle() {
+    ipcRenderer.send("pet-pomo-toggle");
+  },
+  pomoSkip() {
+    ipcRenderer.send("pet-pomo-skip");
+  },
+  openAgent(id) {
+    ipcRenderer.send("pet-open-agent", id);
+  },
+  ackAgent(id) {
+    ipcRenderer.send("pet-ack-agent", id);
+  },
+  openPerm(id) {
+    ipcRenderer.send("pet-open-perm", id);
   },
   setTrayIcon(dataUrl) {
     ipcRenderer.send("pet-tray-icon", dataUrl);

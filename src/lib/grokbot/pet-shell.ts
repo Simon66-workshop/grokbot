@@ -7,6 +7,7 @@ import {
   hitColorWheel,
   hsvToHex,
   resolveFaceHex,
+  type MoodId,
 } from "./color";
 import { drawGrokBot, type ThemeColors } from "./renderer";
 import { readScene, SCENES, isSceneId, type SceneId } from "./scenes";
@@ -26,6 +27,13 @@ import {
   writePetSize,
   type PetSizeId,
 } from "./layout";
+import {
+  composeDigest,
+  createPomo,
+  demoDesk,
+  formatRemain,
+  type DeskSnap,
+} from "./desk";
 
 export const HOLD_MS = 220;
 export const TAP_MS = 280;
@@ -201,11 +209,11 @@ const THEME: ThemeColors = {
 const ACTIONS: { id: string; label: string; run: (engine: GrokBotEngine) => void }[] = [
   { id: "idle", label: "Idle", run: (e) => e.reset() },
   { id: "blink", label: "Blink", run: (e) => e.blink() },
-  { id: "look", label: "Look", run: (e) => e.play("look") },
-  { id: "joy", label: "Joy", run: (e) => e.setExpression(5) },
-  { id: "think", label: "Think", run: (e) => e.play("think") },
-  { id: "wow", label: "Wow", run: (e) => e.play("exclaim") },
-  { id: "orbit", label: "Orbit", run: (e) => e.play("orbits") },
+  { id: "look", label: "Look", run: (e) => e.play("look", { force: true }) },
+  { id: "joy", label: "Joy", run: (e) => e.setExpression(5, { hold: 4 }) },
+  { id: "think", label: "Think", run: (e) => e.play("think", { force: true }) },
+  { id: "wow", label: "Wow", run: (e) => e.play("exclaim", { force: true }) },
+  { id: "orbit", label: "Orbit", run: (e) => e.play("orbits", { force: true }) },
   { id: "bounce", label: "Bounce", run: (e) => e.bounceOnce() },
   { id: "tour", label: "Tour", run: (e) => e.setScene("demo") },
 ];
@@ -233,17 +241,27 @@ const PET_CSS = `
 .grok-stage .face.hold { transform: scale(1.04); }
 .grok-stage .face:active { cursor: grabbing; }
 .grok-stage canvas.bot { display: block; width: 100%; height: 100%; }
-.grok-stage #wheel { display: block; width: 72px; height: 72px; cursor: crosshair; }
+.grok-stage #wheel { display: block; width: 64px; height: 64px; cursor: crosshair; }
 .grok-stage .dock {
   position: absolute;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   opacity: 0;
   pointer-events: none;
   z-index: 3;
 }
+.grok-stage .whisper { order: 1; }
+.grok-stage .agents { order: 2; }
+.grok-stage .desk { order: 3; }
+.grok-stage #actions { order: 4; }
+.grok-stage #scenes { order: 5; }
+.grok-stage #prefs { order: 6; }
+.grok-stage #wheel,
+.grok-stage .presets { order: 7; }
+.grok-stage[data-side="top"] .dock { flex-direction: column-reverse; }
+.grok-stage #prefs button.dim { opacity: 0.62; }
 .grok-stage.open .dock {
   opacity: 1;
   pointer-events: auto;
@@ -292,6 +310,46 @@ const PET_CSS = `
   text-align: center;
 }
 .grok-stage .watch[hidden] { display: none; }
+.grok-stage .whisper {
+  max-width: 260px;
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: rgba(22, 21, 19, 0.62);
+  color: #fffcf6;
+  font: 500 11px/1.35 "SF Pro Text", "Helvetica Neue", sans-serif;
+  text-align: center;
+}
+.grok-stage .whisper[hidden] { display: none; }
+.grok-stage .agents,
+.grok-stage .desk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+  max-width: 280px;
+}
+.grok-stage .agents[hidden],
+.grok-stage .desk[hidden] { display: none; }
+.grok-stage .agents button,
+.grok-stage .desk .chip {
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font: 500 10px/1.2 "SF Pro Text", "Helvetica Neue", sans-serif;
+  color: #fffcf6;
+  background: rgba(27, 86, 243, 0.62);
+  cursor: pointer;
+}
+.grok-stage .agents button.wait { background: rgba(201, 140, 40, 0.78); }
+.grok-stage .agents button.err { background: rgba(180, 50, 40, 0.78); }
+.grok-stage .agents button.done { background: rgba(40, 140, 80, 0.72); }
+.grok-stage .desk .chip {
+  cursor: default;
+  background: rgba(22, 21, 19, 0.5);
+}
+.grok-stage .desk button.chip { cursor: pointer; }
+.grok-stage .desk .chip.fail { background: rgba(180, 50, 40, 0.75); }
+.grok-stage .desk .chip.warn { background: rgba(201, 140, 40, 0.75); }
 .grok-stage .studio {
   border-radius: 999px;
   background: rgba(22, 21, 19, 0.4);
@@ -365,10 +423,23 @@ function ensureStage(root: HTMLElement) {
         <div class="bar" id="scenes"></div>
         <div class="bar" id="actions"></div>
         <div class="bar" id="prefs"></div>
-        <div class="watch" id="watch" hidden></div>
+        <div class="whisper" id="whisper" hidden></div>
+        <div class="agents" id="agents" hidden></div>
+        <div class="desk" id="desk" hidden></div>
         <a class="studio" id="studio" hidden>Studio</a>
       </div>`,
     );
+  } else {
+    const dock = stage.querySelector("#dock");
+    if (dock && !stage.querySelector("#whisper")) {
+      dock.querySelector("#watch")?.remove();
+      dock.insertAdjacentHTML(
+        "beforeend",
+        `<div class="whisper" id="whisper" hidden></div>
+        <div class="agents" id="agents" hidden></div>
+        <div class="desk" id="desk" hidden></div>`,
+      );
+    }
   }
   return stage;
 }
@@ -402,7 +473,9 @@ export function bootMacCompanion(opts: BootOptions = {}) {
   const sceneBar = stage.querySelector<HTMLDivElement>("#scenes")!;
   const actionBar = stage.querySelector<HTMLDivElement>("#actions")!;
   const prefBar = stage.querySelector<HTMLDivElement>("#prefs");
-  const watchEl = stage.querySelector<HTMLDivElement>("#watch");
+  const whisperEl = stage.querySelector<HTMLDivElement>("#whisper");
+  const agentsEl = stage.querySelector<HTMLDivElement>("#agents");
+  const deskEl = stage.querySelector<HTMLDivElement>("#desk");
   const studio = stage.querySelector<HTMLAnchorElement>("#studio");
   const menuBot = document.querySelector<HTMLCanvasElement>("#menu-bot");
 
@@ -480,22 +553,175 @@ export function bootMacCompanion(opts: BootOptions = {}) {
       btn.classList.toggle("on", watchCodex);
       btn.setAttribute("aria-pressed", watchCodex ? "true" : "false");
     }
-    if (!watchEl) return;
-    if (!watchCodex || !codexSnap || codexSnap.status === "idle") {
-      watchEl.hidden = true;
-      watchEl.textContent = "";
+  }
+
+  function paintPomo() {
+    const btn = prefBar?.querySelector<HTMLButtonElement>("[data-pref=pomo]");
+    if (!btn) return;
+    const p = desk.pomo;
+    if (p.running && p.phase === "work") btn.textContent = formatRemain(p.remainingMs);
+    else if (p.running && p.phase === "break") btn.textContent = `Br ${formatRemain(p.remainingMs)}`;
+    else btn.textContent = "Focus";
+    btn.classList.toggle("on", p.running || p.phase === "break");
+    btn.title = p.running ? "Pause focus · F" : "25-minute focus · F";
+  }
+
+  function paintBrief() {
+    const btn = prefBar?.querySelector<HTMLButtonElement>("[data-pref=brief]");
+    if (!btn) return;
+    btn.textContent = briefing ? "…" : "Brief";
+    btn.classList.toggle("on", Boolean(whisper));
+    btn.title = desk.grok.available ? "Ask Grok · W" : "One-line status · W";
+  }
+
+  function paintWhisper() {
+    if (!whisperEl) return;
+    const text = whisper || (dockOpen ? desk.digest : "");
+    if (!text || text === "All quiet.") {
+      whisperEl.hidden = true;
+      whisperEl.textContent = "";
       return;
     }
-    const bits = [codexSnap.tool || "Agents", codexSnap.label];
-    if (codexSnap.name) bits.push(codexSnap.name);
-    watchEl.textContent = bits.join(" · ");
-    watchEl.hidden = false;
+    whisperEl.textContent = text;
+    whisperEl.hidden = false;
+  }
+
+  function paintAgents() {
+    if (!agentsEl) return;
+    agentsEl.replaceChildren();
+    const list = watchCodex ? desk.agents.filter((a) => a.status !== "idle") : [];
+    if (!list.length) {
+      agentsEl.hidden = true;
+      return;
+    }
+    agentsEl.hidden = false;
+    for (const agent of list.slice(0, 6)) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.agent = agent.id;
+      const klass = agent.status === "waiting" ? "wait" : agent.status === "error" ? "err" : agent.status === "done" ? "done" : "";
+      if (klass) b.classList.add(klass);
+      b.textContent = agent.cwd ? `${agent.name} · ${agent.cwd}` : `${agent.name} · ${agent.label}`;
+      b.title = "Open this tool";
+      b.addEventListener("click", () => {
+        ackedWait = `${agent.id}:${agent.status}:${agent.cwd}`;
+        if (pet) {
+          window.pet?.ackAgent?.(agent.id);
+          window.pet?.openAgent?.(agent.id);
+        } else showWhisper(`Would open ${agent.name} on your Mac`);
+      });
+      agentsEl.appendChild(b);
+    }
+  }
+
+  function paintDeskChips() {
+    if (!deskEl) return;
+    deskEl.replaceChildren();
+    const chips: { text: string; kind?: string; perm?: string }[] = [];
+    for (const p of desk.perms?.missing || []) {
+      chips.push({ text: p.label, kind: "fail", perm: p.id });
+    }
+    if (desk.quiet) chips.push({ text: "Face only", kind: "warn" });
+    const next = desk.meeting.next;
+    if (desk.meeting.on) chips.push({ text: "In a meeting", kind: "warn" });
+    else if (next && next.minutes >= 0) chips.push({ text: `${next.title} in ${next.minutes}m`, kind: "warn" });
+    for (const g of desk.git.slice(0, 2)) {
+      const bits = [g.repo, g.branch].filter(Boolean);
+      if (g.tests === "fail") bits.push("tests");
+      else if (g.dirty) bits.push(`${g.dirty} dirty`);
+      chips.push({
+        text: bits.join(" · "),
+        kind: g.tests === "fail" ? "fail" : g.dirty ? "warn" : "",
+      });
+    }
+    if (!chips.length) {
+      deskEl.hidden = true;
+      return;
+    }
+    deskEl.hidden = false;
+    for (const chip of chips) {
+      if (chip.perm) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = `chip ${chip.kind || ""}`.trim();
+        b.textContent = chip.text;
+        b.title = "Open System Settings and grant access";
+        b.addEventListener("click", () => {
+          if (pet) window.pet?.openPerm?.(chip.perm!);
+          else showWhisper("On your Mac this opens System Settings so you can allow it.");
+        });
+        deskEl.appendChild(b);
+      } else {
+        const el = document.createElement("span");
+        el.className = `chip${chip.kind ? ` ${chip.kind}` : ""}`;
+        el.textContent = chip.text;
+        deskEl.appendChild(el);
+      }
+    }
+  }
+
+  function paintDesk() {
+    paintCodex();
+    paintPomo();
+    paintBrief();
+    paintWhisper();
+    paintAgents();
+    paintDeskChips();
+  }
+
+  function playNudge() {
+    engine.noteInput();
+    engine.play("exclaim");
+    engine.bounceOnce();
+    playSfx("dock");
+  }
+
+  function waitKeyOf(agents: DeskSnap["agents"]) {
+    const w = agents.find((a) => a.status === "waiting");
+    return w ? `${w.id}:${w.status}:${w.cwd}` : "";
+  }
+
+  function scheduleWebNudge(key: string) {
+    window.clearTimeout(nudgeTimer);
+    if (pet || !key || key === ackedWait) return;
+    nudgeTimer = window.setTimeout(() => {
+      if (waitKeyOf(desk.agents) !== key || key === ackedWait) return;
+      playNudge();
+      scheduleWebNudge(key);
+    }, 12_000);
+  }
+
+  function moodFromDesk(snap: DeskSnap): MoodId {
+    if (snap.agents.some((a) => a.status === "error")) return "error";
+    if (snap.agents.some((a) => a.status === "waiting")) return "wait";
+    if (snap.agents.some((a) => a.status === "done")) return "joy";
+    if (snap.agents.some((a) => a.status === "running")) return "think";
+    if (snap.pomo?.running && snap.pomo.phase === "work") return "think";
+    if (snap.meeting?.on) return "look";
+    return "idle";
   }
 
   function applyCodexSnap(snap: { status: string; label: string; name: string; threads: number; tool?: string }, fromWatch = true) {
-    const prev = codexSnap?.status;
-    codexSnap = snap;
-    paintCodex();
+    if (pet) return;
+    const prev = desk.agents[0]?.status;
+    if (snap.status === "idle") {
+      desk.agents = [];
+    } else {
+      desk.agents = [
+        {
+          id: (snap.tool || "agents").toLowerCase(),
+          name: snap.tool || "Agents",
+          status: snap.status,
+          label: snap.label,
+          threads: snap.threads,
+          cwd: snap.name,
+          processOn: true,
+        },
+      ];
+    }
+    desk.digest = composeDigest(desk);
+    paintDesk();
+    engine.setMood(moodFromDesk(desk));
     if (!watchCodex || !fromWatch) return;
     if (snap.status === prev) return;
     engine.noteInput();
@@ -508,7 +734,118 @@ export function bootMacCompanion(opts: BootOptions = {}) {
       engine.setExpression(5);
       engine.bounceOnce();
       playSfx("land");
-    } else if (snap.status === "error") engine.play("think");
+    } else if (snap.status === "error") {
+      engine.setExpression(17);
+      engine.play("think");
+    }
+  }
+
+  function applyDesk(snap: DeskSnap, fromWatch = true) {
+    const prevAgents = desk.agents.map((a) => `${a.id}:${a.status}`).join("|");
+    const prevMeet = desk.meeting.next?.minutes;
+    const prevFail = desk.git.some((g) => g.tests === "fail");
+    desk = snap;
+    meetingOn = Boolean(snap.meeting?.on);
+    focusWork = Boolean(snap.focus?.workish);
+    paintDesk();
+    engine.setMood(moodFromDesk(snap));
+    syncAutoWork();
+    if (!fromWatch) return;
+    const nextAgents = snap.agents.map((a) => `${a.id}:${a.status}`).join("|");
+    if (nextAgents !== prevAgents) {
+      const waiting = snap.agents.find((a) => a.status === "waiting");
+      const running = snap.agents.find((a) => a.status === "running");
+      const errored = snap.agents.find((a) => a.status === "error");
+      const done = snap.agents.find((a) => a.status === "done");
+      engine.noteInput();
+      if (errored) {
+        engine.setExpression(17);
+        engine.play("think");
+      } else if (waiting) {
+        engine.play("exclaim");
+        engine.bounceOnce();
+        playSfx("dock");
+      } else if (done) {
+        engine.setExpression(5);
+        engine.bounceOnce();
+        playSfx("land");
+      } else if (running) engine.play("think");
+    }
+    if (
+      engine.mood === "idle" &&
+      snap.meeting.next &&
+      snap.meeting.next.minutes >= 0 &&
+      snap.meeting.next.minutes !== prevMeet
+    ) {
+      engine.play("look");
+    }
+    if (!prevFail && snap.git.some((g) => g.tests === "fail")) engine.play("think");
+    const key = waitKeyOf(snap.agents);
+    if (!key) ackedWait = "";
+    scheduleWebNudge(key);
+  }
+
+  function showWhisper(text: string) {
+    whisper = text;
+    paintWhisper();
+    paintBrief();
+    if (!dockOpen) showDock(true);
+    window.clearTimeout(whisperTimer);
+    whisperTimer = window.setTimeout(() => {
+      if (whisper === text) {
+        whisper = "";
+        paintWhisper();
+        paintBrief();
+      }
+    }, 8000);
+  }
+
+  function tickWebPomo() {
+    const snap = webPomo.tick();
+    desk = { ...desk, pomo: snap, digest: composeDigest({ ...desk, pomo: snap }) };
+    paintDesk();
+    if (snap.justEnded === "work") {
+      engine.setExpression(5);
+      engine.bounceOnce();
+      playSfx("land");
+      showWhisper("Break. Five minutes.");
+    } else if (snap.justEnded === "break") {
+      window.clearInterval(webPomoTimer);
+      webPomoTimer = 0;
+      showWhisper("Back to it.");
+    }
+  }
+
+  function toggleFocus() {
+    if (pet) {
+      window.pet?.pomoToggle?.();
+      return;
+    }
+    const snap = webPomo.toggle();
+    desk = { ...desk, pomo: snap, digest: composeDigest({ ...desk, pomo: snap }) };
+    paintDesk();
+    if (snap.running && !webPomoTimer) webPomoTimer = window.setInterval(tickWebPomo, 1000);
+    if (!snap.running && snap.phase === "idle") {
+      window.clearInterval(webPomoTimer);
+      webPomoTimer = 0;
+    }
+    if (snap.running && snap.phase === "work") applyScene("work");
+  }
+
+  async function askBrief(useGrok: boolean) {
+    if (pet && window.pet?.brief) {
+      briefing = true;
+      paintBrief();
+      try {
+        const text = await window.pet.brief(useGrok);
+        if (text) showWhisper(text);
+      } finally {
+        briefing = false;
+        paintBrief();
+      }
+      return;
+    }
+    showWhisper(desk.digest || "All quiet.");
   }
 
   function sceneSfx() {
@@ -519,18 +856,39 @@ export function bootMacCompanion(opts: BootOptions = {}) {
   let autoWork = readAutoWork();
   let watchCodex = readCodexWatch();
   let meetingOn = false;
-  let codexSnap: { status: string; label: string; name: string; threads: number; tool?: string } | null = null;
+  let focusWork = false;
+  let desk: DeskSnap = {
+    digest: "All quiet.",
+    agents: [],
+    meeting: { on: false, next: null },
+    focus: { app: "", workish: false },
+    git: [],
+    pomo: { running: false, phase: "idle", remainingMs: 0, totalMs: 25 * 60_000 },
+    grok: { available: false, source: "none" },
+    perms: { calendar: true, automation: true, grokBot: true, missing: [] },
+    quiet: false,
+  };
+  let whisper = "";
+  let whisperTimer = 0;
+  let ackedWait = "";
+  let nudgeTimer = 0;
+  let briefing = false;
   let sceneBeforeAuto: SceneId | null = null;
   let userPinned = false;
   let lastTrayAt = 0;
+  const webPomo = createPomo();
+  let webPomoTimer = 0;
 
   const trayCanvas = document.createElement("canvas");
   trayCanvas.width = 44;
   trayCanvas.height = 44;
   const trayCtx = trayCanvas.getContext("2d");
 
+  let hoursOn = inWorkHours();
+
   function shouldAutoWork() {
-    return autoWork && (meetingOn || inWorkHours());
+    hoursOn = inWorkHours(new Date(), hoursOn);
+    return autoWork && (meetingOn || hoursOn || focusWork);
   }
 
   function applyScene(id: SceneId, fromUser = true) {
@@ -579,9 +937,11 @@ export function bootMacCompanion(opts: BootOptions = {}) {
   function showDock(open: boolean) {
     dockOpen = open;
     stage.classList.toggle("open", open);
+    paintWhisper();
     if (open) {
       interactOn();
       if (sceneSfx()) playSfx("dock");
+      if (web) placeWeb();
     } else {
       interactOff();
     }
@@ -612,6 +972,10 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     meetingOn = Boolean(on);
     syncAutoWork();
   });
+  const offFocus = window.pet?.onFocus?.((on) => {
+    focusWork = Boolean(on);
+    syncAutoWork();
+  });
   const offSize = window.pet?.onSize?.((id) => {
     if (isPetSize(id) && id !== petSize) applyPetSize(id, true);
   });
@@ -630,8 +994,26 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     if (on === watchCodex) return;
     watchCodex = on;
     writeCodexWatch(on);
-    paintCodex();
+    paintDesk();
   });
+  const offDesk = window.pet?.onDesk?.((snap) => {
+    applyDesk(snap);
+  });
+  const offWhisper = window.pet?.onWhisper?.((text) => {
+    showWhisper(String(text || ""));
+  });
+  const offPomoEnded = window.pet?.onPomoEnded?.((phase) => {
+    engine.noteInput();
+    if (phase === "work") {
+      engine.setExpression(5);
+      engine.bounceOnce();
+      playSfx("land");
+    } else {
+      engine.play("exclaim");
+      engine.bounceOnce();
+    }
+  });
+  const offNudge = window.pet?.onNudge?.(() => playNudge());
 
   if (pet) {
     wrap.addEventListener("pointerenter", onFaceEnter);
@@ -758,6 +1140,8 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     else if (e.key === "1") applyScene("work");
     else if (e.key === "2") applyScene("companion");
     else if (e.key === "m" || e.key === "M") setMuted(!isMuted());
+    else if (e.key === "w" || e.key === "W") void askBrief(false);
+    else if (e.key === "f" || e.key === "F") toggleFocus();
   };
   window.addEventListener("keydown", onKey);
 
@@ -801,12 +1185,25 @@ export function bootMacCompanion(opts: BootOptions = {}) {
 
   if (prefBar) {
     prefBar.replaceChildren();
+    const pomoBtn = document.createElement("button");
+    pomoBtn.type = "button";
+    pomoBtn.dataset.pref = "pomo";
+    pomoBtn.title = "25-minute focus · F";
+    pomoBtn.addEventListener("click", () => toggleFocus());
+    prefBar.appendChild(pomoBtn);
+    const briefBtn = document.createElement("button");
+    briefBtn.type = "button";
+    briefBtn.dataset.pref = "brief";
+    briefBtn.title = "One-line status · W";
+    briefBtn.addEventListener("click", () => void askBrief(Boolean(pet)));
+    prefBar.appendChild(briefBtn);
     (Object.keys(PET_SIZES) as PetSizeId[]).forEach((id) => {
       const b = document.createElement("button");
       b.type = "button";
       b.dataset.size = id;
       b.textContent = PET_SIZES[id].label;
       b.title = PET_SIZES[id].hint;
+      b.classList.add("dim");
       b.addEventListener("click", () => applyPetSize(id));
       prefBar.appendChild(b);
     });
@@ -814,12 +1211,14 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     muteBtn.type = "button";
     muteBtn.dataset.pref = "mute";
     muteBtn.title = "Sound on · M";
+    muteBtn.classList.add("dim");
     muteBtn.addEventListener("click", () => setMuted(!isMuted()));
     prefBar.appendChild(muteBtn);
     const autoBtn = document.createElement("button");
     autoBtn.type = "button";
     autoBtn.dataset.pref = "auto";
     autoBtn.title = "Work hours 9–18 and meetings switch to Work";
+    autoBtn.classList.add("dim");
     autoBtn.addEventListener("click", () => {
       autoWork = !autoWork;
       writeAutoWork(autoWork);
@@ -833,6 +1232,7 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     codexBtn.type = "button";
     codexBtn.dataset.pref = "codex";
     codexBtn.title = "Watch local Codex, Claude, Cursor, Gemini, and other agents";
+    codexBtn.classList.add("dim");
     codexBtn.addEventListener("click", () => {
       watchCodex = !watchCodex;
       writeCodexWatch(watchCodex);
@@ -844,13 +1244,15 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     paintMute();
     paintSize();
     paintAuto();
-    paintCodex();
+    paintDesk();
   }
 
   window.pet?.setScene?.(engine.scene);
   window.pet?.setMuted?.(isMuted());
   window.pet?.setAutoWork?.(autoWork);
   window.pet?.setCodexWatch?.(watchCodex);
+
+  if (web) applyDesk(demoDesk(), false);
 
   if (studio && opts.studioHref) {
     studio.hidden = false;
@@ -901,7 +1303,29 @@ export function bootMacCompanion(opts: BootOptions = {}) {
   function placeWeb() {
     if (!web) return;
     webSide = pickDockSide(pos.x, pos.y, area());
+    keepDockOnScreen();
     applyWebPos();
+  }
+
+  function keepDockOnScreen() {
+    if (!web) return;
+    const scale = fitScale();
+    const o = BALL_IN_STAGE[webSide];
+    const a = area();
+    if (webSide === "bottom") {
+      const bottom = pos.y + (STAGE.h - o.y) * scale;
+      if (bottom > a.h - 8) pos.y -= bottom - (a.h - 8);
+    } else if (webSide === "top") {
+      const top = pos.y - o.y * scale;
+      if (top < 36) pos.y += 36 - top;
+    } else if (webSide === "right") {
+      const right = pos.x + (STAGE.w - o.x) * scale;
+      if (right > a.w - 8) pos.x -= right - (a.w - 8);
+    } else if (webSide === "left") {
+      const left = pos.x - o.x * scale;
+      if (left < 8) pos.x += 8 - left;
+    }
+    pos = clampPoint(pos.x, pos.y, a);
   }
 
   function saveWebPos() {
@@ -1134,12 +1558,20 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     if (typeof offVisible === "function") offVisible();
     if (typeof offTrayMute === "function") offTrayMute();
     if (typeof offMeeting === "function") offMeeting();
+    if (typeof offFocus === "function") offFocus();
     if (typeof offSize === "function") offSize();
     if (typeof offAuto === "function") offAuto();
     if (typeof offCodex === "function") offCodex();
     if (typeof offCodexWatch === "function") offCodexWatch();
+    if (typeof offDesk === "function") offDesk();
+    if (typeof offWhisper === "function") offWhisper();
+    if (typeof offPomoEnded === "function") offPomoEnded();
+    if (typeof offNudge === "function") offNudge();
     if (typeof offDragArmed === "function") offDragArmed();
     if (typeof offDragFinished === "function") offDragFinished();
     window.clearInterval(autoTimer);
+    window.clearTimeout(whisperTimer);
+    window.clearTimeout(nudgeTimer);
+    window.clearInterval(webPomoTimer);
   };
 }

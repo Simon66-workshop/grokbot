@@ -47,54 +47,80 @@ export const TOOLS = [
     name: "Codex",
     roots: (h) => [envJoin("CODEX_HOME", h, ".codex", "sessions")],
     proc: (n) => /(?:^|\s|\/)codex(?:\s|$|\.|-cli)|codex\.app/.test(n) && !n.includes("codexorbit"),
+    apps: ["Terminal", "iTerm", "Ghostty", "Warp", "Codex"],
   },
   {
     id: "claude",
     name: "Claude",
     roots: (h) => [envJoin("CLAUDE_CONFIG_DIR", h, ".claude", "projects")],
     proc: (n) => /(?:^|\s|\/)claude(?:\s|$|\.)|claude-code|claude\.app/.test(n),
+    apps: ["Claude", "Terminal", "iTerm", "Ghostty", "Warp"],
   },
   {
     id: "gemini",
     name: "Gemini",
     roots: (h) => [path.join(h, ".gemini", "tmp")],
     proc: (n) => /(?:^|\s|\/)gemini(?:-cli)?(?:\s|$|\.)|antigravity/.test(n),
+    apps: ["Terminal", "iTerm", "Ghostty", "Warp"],
   },
   {
     id: "cursor",
     name: "Cursor",
     roots: (h) => [path.join(h, ".cursor", "projects")],
     proc: (n) => /cursor-agent|(?:^|\s)cursor(?:\s|$|\.app)/.test(n),
+    apps: ["Cursor"],
   },
   {
     id: "amp",
     name: "Amp",
     roots: (h) => [path.join(h, ".local", "share", "amp", "threads")],
     proc: (n) => /(?:^|\s|\/)amp(?:\s|$|\.)|sourcegraph-amp/.test(n),
+    apps: ["Amp", "Terminal"],
   },
   {
     id: "goose",
     name: "Goose",
     roots: (h) => [path.join(h, ".local", "share", "goose", "sessions")],
     proc: (n) => /(?:^|\s|\/)goose(?:\s|$|\.)|block-goose/.test(n),
+    apps: ["Goose", "Terminal"],
   },
   {
     id: "opencode",
     name: "OpenCode",
     roots: (h) => [path.join(h, ".local", "share", "opencode")],
     proc: (n) => /opencode/.test(n),
+    apps: ["Terminal", "iTerm"],
   },
   {
     id: "aider",
     name: "Aider",
     roots: () => [],
     proc: (n) => /(?:^|\s|\/)aider(?:\s|$)/.test(n),
+    apps: ["Terminal", "iTerm"],
   },
   {
     id: "copilot",
     name: "Copilot",
     roots: () => [],
     proc: (n) => /copilot/.test(n),
+    apps: ["Visual Studio Code", "Code", "Terminal"],
+  },
+  {
+    id: "grok-bot",
+    name: "Grok Bot",
+    roots: (h) => [
+      path.join(h, "Library", "Application Support", "Grok Bot"),
+      path.join(h, "Library", "Application Support", "GrokBot"),
+    ],
+    proc: (n) => n.includes("grok bot") || /(?:^|\s)grok-bot(?:\s|$)/.test(n),
+    apps: ["Grok Bot"],
+  },
+  {
+    id: "grok",
+    name: "Grok",
+    roots: (h) => [path.join(h, ".grok"), path.join(h, ".grok-build")],
+    proc: (n) => /(?:^|\s|\/)grok(?:\s|$)/.test(n) && !n.includes("grokbot") && !n.includes("grok bot"),
+    apps: ["Terminal", "iTerm", "Ghostty", "Warp"],
   },
 ];
 
@@ -149,6 +175,19 @@ export function classifyRows(rows, { processOn = false, ageMs = Infinity } = {})
   return "idle";
 }
 
+export function ageStatus(status, { processOn = false, ageMs = Infinity } = {}) {
+  if (status === "error") return processOn || ageMs < 5 * 60_000 ? "error" : "idle";
+  if (status === "done" || status === "waiting") {
+    if (processOn) return "waiting";
+    return ageMs < 5 * 60_000 ? status : "idle";
+  }
+  if (status === "running") {
+    if (processOn || ageMs < 90_000) return "running";
+    return ageMs < 5 * 60_000 ? "waiting" : "idle";
+  }
+  return "idle";
+}
+
 export function parseJsonlTail(text, startedMidLine = false) {
   const lines = String(text || "").split(/\n+/);
   if (startedMidLine && lines.length) lines.shift();
@@ -200,13 +239,17 @@ export function rowsFromObject(obj) {
 }
 
 export function cwdLabel(rows) {
+  const full = cwdFull(rows);
+  if (!full) return "";
+  const base = path.basename(full.replace(/[/\\]+$/, ""));
+  return base ? base.slice(0, 40) : "";
+}
+
+export function cwdFull(rows) {
   for (const row of rows) {
     const p = row?.payload;
     const cwd = p?.cwd || row?.cwd || row?.project || row?.workspace;
-    if (typeof cwd === "string" && cwd.trim()) {
-      const base = path.basename(cwd.replace(/[/\\]+$/, ""));
-      if (base) return base.slice(0, 40);
-    }
+    if (typeof cwd === "string" && cwd.trim()) return cwd.trim();
   }
   return "";
 }
@@ -228,11 +271,16 @@ export function notifyCopy(status, name, threads, tool = "Codex") {
   return null;
 }
 
-export function walkJsonl(dir, out = [], depth = 0) {
-  return walkSessionFiles(dir, out, depth);
+const FILE_SNAP = new Map();
+const WALK_CACHE = new Map();
+const WALK_TTL_MS = 12_000;
+
+export function resetSessionCaches() {
+  FILE_SNAP.clear();
+  WALK_CACHE.clear();
 }
 
-export function walkSessionFiles(dir, out = [], depth = 0) {
+function walkSessionFilesInner(dir, out, depth) {
   if (depth > 6) return out;
   let ents = [];
   try {
@@ -242,12 +290,33 @@ export function walkSessionFiles(dir, out = [], depth = 0) {
   }
   for (const ent of ents) {
     const p = path.join(dir, ent.name);
-    if (ent.isDirectory()) walkSessionFiles(p, out, depth + 1);
+    if (ent.isDirectory()) walkSessionFilesInner(p, out, depth + 1);
     else if (ent.isFile() && !SKIP_FILE.test(ent.name) && ent.name !== "session_index.jsonl") {
       if (ent.name.endsWith(".jsonl") || ent.name.endsWith(".json")) out.push(p);
     }
   }
   return out;
+}
+
+export function walkJsonl(dir, out = [], depth = 0) {
+  return walkSessionFiles(dir, out, depth);
+}
+
+export function walkSessionFiles(dir, out = [], depth = 0) {
+  if (depth === 0) {
+    const now = Date.now();
+    const hit = WALK_CACHE.get(dir);
+    if (hit && now - hit.at < WALK_TTL_MS) {
+      for (const f of hit.files) out.push(f);
+      return out;
+    }
+    const collected = [];
+    walkSessionFilesInner(dir, collected, 0);
+    WALK_CACHE.set(dir, { at: now, files: collected });
+    for (const f of collected) out.push(f);
+    return out;
+  }
+  return walkSessionFilesInner(dir, out, depth);
 }
 
 export function readTail(file, bytes = 64_000) {
@@ -287,22 +356,57 @@ function matchToolProcess(line) {
 export function snapshotFromFiles(files, { processOn = false, now = Date.now(), maxAgeMs = 6 * 3600_000 } = {}) {
   let status = "idle";
   let name = "";
+  let cwd = "";
   let threads = 0;
+  const seen = new Set();
   for (const file of files) {
-    let tail;
+    seen.add(file);
+    let st;
     try {
-      tail = readTail(file);
+      st = fs.statSync(file);
     } catch {
+      FILE_SNAP.delete(file);
       continue;
     }
-    const ageMs = Math.max(0, now - tail.mtimeMs);
+    const ageMs = Math.max(0, now - st.mtimeMs);
     if (ageMs > maxAgeMs && !processOn) continue;
-    const rows = file.endsWith(".json") && !file.endsWith(".jsonl") ? rowsFromUnknown(tail.text) : parseJsonlTail(tail.text, tail.mid);
-    const next = classifyRows(rows, { processOn, ageMs });
+    const prev = FILE_SNAP.get(file);
+    let next;
+    let fileName = "";
+    let fileCwd = "";
+    if (prev && prev.mtimeMs === st.mtimeMs && prev.size === st.size) {
+      next = ageStatus(prev.status, { processOn, ageMs });
+      fileName = prev.name;
+      fileCwd = prev.cwd;
+      if (next !== prev.status) FILE_SNAP.set(file, { ...prev, status: next });
+    } else {
+      let tail;
+      try {
+        tail = readTail(file);
+      } catch {
+        continue;
+      }
+      const rows = file.endsWith(".json") && !file.endsWith(".jsonl") ? rowsFromUnknown(tail.text) : parseJsonlTail(tail.text, tail.mid);
+      next = classifyRows(rows, { processOn, ageMs });
+      fileCwd = cwdFull(rows);
+      fileName = cwdLabel(rows);
+      FILE_SNAP.set(file, { mtimeMs: st.mtimeMs, size: st.size, status: next, name: fileName, cwd: fileCwd });
+    }
     if (next === "idle") continue;
     threads += 1;
     status = mergeStatus(status, next);
-    if (!name) name = cwdLabel(rows);
+    if (!cwd) cwd = fileCwd;
+    if (!name) name = fileName;
+  }
+  if (FILE_SNAP.size > 240) {
+    for (const key of FILE_SNAP.keys()) {
+      if (!seen.has(key)) FILE_SNAP.delete(key);
+    }
+  }
+  if (WALK_CACHE.size > 48) {
+    const extra = WALK_CACHE.size - 48;
+    const keys = [...WALK_CACHE.keys()].slice(0, extra);
+    for (const key of keys) WALK_CACHE.delete(key);
   }
   if (status === "idle" && processOn) {
     status = "running";
@@ -312,19 +416,20 @@ export function snapshotFromFiles(files, { processOn = false, now = Date.now(), 
     status,
     label: statusLabel(status),
     name,
+    cwd,
     threads,
     processOn: Boolean(processOn),
     tool: "",
   };
 }
 
-const EMPTY = { status: "idle", label: "idle", name: "", threads: 0, processOn: false, tool: "" };
+const EMPTY = { status: "idle", label: "idle", name: "", cwd: "", threads: 0, processOn: false, tool: "", agents: [] };
 
 export async function readCodexSnapshot({ runCmd, now = Date.now(), home = os.homedir() } = {}) {
   let lines = [];
   if (typeof runCmd === "function") {
     try {
-      const out = await runCmd("pgrep", ["-il", "codex|claude|gemini|opencode|goose|aider|copilot|cursor|amp"], 2000);
+      const out = await runCmd("pgrep", ["-il", "codex|claude|gemini|opencode|goose|aider|copilot|cursor|amp|grok"], 2000);
       lines = String(out || "").split(/\n+/);
     } catch {
       lines = [];
@@ -335,9 +440,10 @@ export async function readCodexSnapshot({ runCmd, now = Date.now(), home = os.ho
     const id = matchToolProcess(line);
     if (id) live.add(id);
   }
-  let best = { ...EMPTY };
+  let best = { ...EMPTY, agents: [] };
   let threads = 0;
   let anyProc = false;
+  const agents = [];
   for (const tool of TOOLS) {
     const processOn = live.has(tool.id);
     if (processOn) anyProc = true;
@@ -345,6 +451,17 @@ export async function readCodexSnapshot({ runCmd, now = Date.now(), home = os.ho
     const snap = snapshotFromFiles(files, { processOn, now });
     if (snap.status === "idle") continue;
     threads += snap.threads;
+    const agent = {
+      id: tool.id,
+      name: tool.name,
+      status: snap.status,
+      label: snap.label,
+      threads: snap.threads,
+      cwd: snap.name,
+      path: snap.cwd || "",
+      processOn: processOn || snap.processOn,
+    };
+    agents.push(agent);
     const next = { ...snap, tool: tool.name, processOn: processOn || snap.processOn };
     if (
       !best.tool ||
@@ -356,15 +473,27 @@ export async function readCodexSnapshot({ runCmd, now = Date.now(), home = os.ho
   }
   if (best.status === "idle" && anyProc) {
     const first = TOOLS.find((t) => live.has(t.id));
+    const agent = {
+      id: first?.id || "agents",
+      name: first?.name || "Agents",
+      status: "running",
+      label: "working",
+      threads: 1,
+      cwd: "",
+      path: "",
+      processOn: true,
+    };
     return {
       status: "running",
       label: "working",
       name: "",
+      cwd: "",
       threads: 1,
       processOn: true,
       tool: first?.name || "Agents",
+      agents: [agent],
     };
   }
   if (best.status === "idle") return { ...EMPTY };
-  return { ...best, threads: Math.max(threads, best.threads) };
+  return { ...best, threads: Math.max(threads, best.threads), agents };
 }
