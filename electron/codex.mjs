@@ -108,10 +108,7 @@ export const TOOLS = [
   {
     id: "grok-bot",
     name: "Grok Bot",
-    roots: (h) => [
-      path.join(h, "Library", "Application Support", "Grok Bot"),
-      path.join(h, "Library", "Application Support", "GrokBot"),
-    ],
+    roots: (h) => [path.join(h, "Library", "Application Support", "Grok Bot")],
     proc: (n) => n.includes("grok bot") || /(?:^|\s)grok-bot(?:\s|$)/.test(n),
     apps: ["Grok Bot"],
   },

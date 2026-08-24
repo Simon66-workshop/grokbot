@@ -3000,16 +3000,26 @@
       btn.classList.toggle("on", Boolean(whisper));
       btn.title = desk.grok.available ? "Ask Grok \xB7 W" : "One-line status \xB7 W";
     }
+    function syncChrome() {
+      if (!pet) return;
+      window.pet?.setDock?.(dockOpen);
+      const on = Boolean(
+        whisperEl && !whisperEl.hidden || agentsEl && !agentsEl.hidden || deskEl && !deskEl.hidden
+      );
+      window.pet?.setOverlay?.(on);
+    }
     function paintWhisper() {
       if (!whisperEl) return;
       const text = whisper || (dockOpen ? desk.digest : "");
       if (!text || text === "All quiet.") {
         whisperEl.hidden = true;
         whisperEl.textContent = "";
+        syncChrome();
         return;
       }
       whisperEl.textContent = text;
       whisperEl.hidden = false;
+      syncChrome();
     }
     function paintAgents() {
       if (!agentsEl) return;
@@ -3021,6 +3031,7 @@
       });
       if (!list.length) {
         agentsEl.hidden = true;
+        syncChrome();
         return;
       }
       agentsEl.hidden = false;
@@ -3041,6 +3052,7 @@
         });
         agentsEl.appendChild(b);
       }
+      syncChrome();
     }
     const dismissedPerms = /* @__PURE__ */ new Set();
     function paintDeskChips() {
@@ -3066,6 +3078,7 @@
       }
       if (!chips.length) {
         deskEl.hidden = true;
+        syncChrome();
         return;
       }
       deskEl.hidden = false;
@@ -3090,6 +3103,7 @@
           deskEl.appendChild(el);
         }
       }
+      syncChrome();
     }
     function paintDesk() {
       paintCodex();
@@ -3343,6 +3357,7 @@
     function showDock(open) {
       dockOpen = open;
       stage.classList.toggle("open", open);
+      window.pet?.setDock?.(open);
       paintWhisper();
       if (open) {
         interactOn();

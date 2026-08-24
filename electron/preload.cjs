@@ -26,6 +26,12 @@ contextBridge.exposeInMainWorld("pet", {
   setClickThrough(on) {
     ipcRenderer.send("pet-click-through", on);
   },
+  setDock(open) {
+    ipcRenderer.send("pet-dock", open);
+  },
+  setOverlay(on) {
+    ipcRenderer.send("pet-overlay", on);
+  },
   onCursor(fn) {
     return listen("pet-cursor", fn);
   },

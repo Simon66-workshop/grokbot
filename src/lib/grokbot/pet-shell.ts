@@ -582,16 +582,29 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     btn.title = desk.grok.available ? "Ask Grok · W" : "One-line status · W";
   }
 
+  function syncChrome() {
+    if (!pet) return;
+    window.pet?.setDock?.(dockOpen);
+    const on = Boolean(
+      (whisperEl && !whisperEl.hidden) ||
+        (agentsEl && !agentsEl.hidden) ||
+        (deskEl && !deskEl.hidden),
+    );
+    window.pet?.setOverlay?.(on);
+  }
+
   function paintWhisper() {
     if (!whisperEl) return;
     const text = whisper || (dockOpen ? desk.digest : "");
     if (!text || text === "All quiet.") {
       whisperEl.hidden = true;
       whisperEl.textContent = "";
+      syncChrome();
       return;
     }
     whisperEl.textContent = text;
     whisperEl.hidden = false;
+    syncChrome();
   }
 
   function paintAgents() {
@@ -604,6 +617,7 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     });
     if (!list.length) {
       agentsEl.hidden = true;
+      syncChrome();
       return;
     }
     agentsEl.hidden = false;
@@ -624,6 +638,7 @@ export function bootMacCompanion(opts: BootOptions = {}) {
       });
       agentsEl.appendChild(b);
     }
+    syncChrome();
   }
 
   const dismissedPerms = new Set<string>();
@@ -651,6 +666,7 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     }
     if (!chips.length) {
       deskEl.hidden = true;
+      syncChrome();
       return;
     }
     deskEl.hidden = false;
@@ -675,6 +691,7 @@ export function bootMacCompanion(opts: BootOptions = {}) {
         deskEl.appendChild(el);
       }
     }
+    syncChrome();
   }
 
   function paintDesk() {
@@ -953,6 +970,7 @@ export function bootMacCompanion(opts: BootOptions = {}) {
   function showDock(open: boolean) {
     dockOpen = open;
     stage.classList.toggle("open", open);
+    window.pet?.setDock?.(open);
     paintWhisper();
     if (open) {
       interactOn();
