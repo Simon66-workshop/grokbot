@@ -303,10 +303,10 @@ export class GrokBotEngine {
 
   private seedOrbits() {
     this.orbits = [
-      { rx: 118, ry: 42, tilt: 0.7, yaw: 0.2, speed: 0.85, phase: 0, hueA: 12, hueB: 48, width: 5.5 },
-      { rx: 108, ry: 54, tilt: -0.55, yaw: 1.1, speed: -0.62, phase: 1.4, hueA: 265, hueB: 200, width: 5 },
-      { rx: 96, ry: 70, tilt: 1.05, yaw: 2.2, speed: 0.48, phase: 2.6, hueA: 165, hueB: 195, width: 4.5 },
-      { rx: 124, ry: 28, tilt: 0.25, yaw: 0.6, speed: 1.05, phase: 0.8, hueA: 300, hueB: 170, width: 4 },
+      { rx: 122, ry: 44, tilt: 0.7, yaw: 0.2, speed: 0.85, phase: 0, hueA: 12, hueB: 48, width: 5.5 },
+      { rx: 116, ry: 52, tilt: -0.55, yaw: 1.1, speed: -0.62, phase: 1.4, hueA: 265, hueB: 200, width: 5 },
+      { rx: 112, ry: 64, tilt: 1.05, yaw: 2.2, speed: 0.48, phase: 2.6, hueA: 165, hueB: 195, width: 4.5 },
+      { rx: 130, ry: 32, tilt: 0.25, yaw: 0.6, speed: 1.05, phase: 0.8, hueA: 300, hueB: 170, width: 4 },
     ];
   }
 

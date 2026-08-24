@@ -13,7 +13,8 @@ import { parseMeetingOut, buildDesk } from "../electron/desk.mjs";
 import { notifyCopy } from "../electron/codex.mjs";
 import { grokBotWaitingFromWindows, isGrokBotProcess } from "../electron/grok-bot-app.mjs";
 import { classifyPermOut, parsePermProbe, probePerms, resolvePerms, unwrapPermCmd } from "../electron/perms.mjs";
-import { bannersQuiet, nextNudge, parseInbox, parseMacScene, parseNudgeUrl, waitKey } from "../electron/nudge.mjs";
+import { bannersQuiet, nextNudge, overlayAgentId, overlayWhisper, parseInbox, parseMacScene, parseNudgeUrl, waitKey } from "../electron/nudge.mjs";
+import { PET_SIZES, dockMainFor } from "../electron/layout.mjs";
 import { AGENT_RANK, createGate, createLatch, inWorkHoursHyst, soonHyst, stampMeeting, tickMeeting } from "../electron/hysteresis.mjs";
 
 test("composeDigest: waiting agents beat quiet", () => {
@@ -237,6 +238,28 @@ test("parseNudgeUrl reads grokbot scheme", () => {
 test("parseInbox reads hook file", () => {
   const msg = parseInbox('{"status":"done","name":"tests","tool":"Grok Bot"}');
   assert.equal(msg.status, "done");
+});
+
+test("overlayAgentId uses the tool, not always grok-bot", () => {
+  assert.equal(overlayAgentId("Codex"), "codex");
+  assert.equal(overlayAgentId("Grok Bot"), "grok-bot");
+  assert.equal(overlayAgentId(""), "grok-bot");
+});
+
+test("overlayWhisper names the tool and session", () => {
+  assert.equal(overlayWhisper({ tool: "Codex", name: "codex-remind-test" }), "Codex · codex-remind-test");
+  assert.equal(overlayWhisper({ tool: "Codex", status: "waiting" }), "Codex · waiting");
+  assert.equal(overlayWhisper({ tool: "Codex", name: "new-chat" }), "Codex · new-chat");
+});
+
+test("dockMain keeps chips below the body disk", () => {
+  for (const id of ["s", "m", "l"]) {
+    const size = PET_SIZES[id];
+    const radius = size.box * size.faceScale;
+    const lift = size.faceScale > 0.28 ? 0.06 * radius : 0;
+    const ballBottom = size.box / 2 - lift + radius;
+    assert.ok(dockMainFor(size.box, size.faceScale) >= ballBottom + 8, id);
+  }
 });
 
 test("nextNudge repeats after interval, stops when acked", () => {

@@ -52,6 +52,18 @@ export function parseNudgeUrl(raw) {
   };
 }
 
+export function overlayAgentId(tool) {
+  const id = String(tool || "grok-bot")
+    .toLowerCase()
+    .replace(/\s+/g, "-");
+  return id || "grok-bot";
+}
+
+export function overlayWhisper(msg = {}) {
+  const tool = msg.tool || "Grok Bot";
+  return msg.name ? `${tool} · ${msg.name}` : `${tool} · ${msg.status || "waiting"}`;
+}
+
 export function parseInbox(raw) {
   try {
     const row = typeof raw === "string" ? JSON.parse(raw) : raw;

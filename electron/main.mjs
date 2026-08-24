@@ -16,6 +16,8 @@ import {
   OVERLAY_MS,
   bannersQuiet,
   nextNudge,
+  overlayAgentId,
+  overlayWhisper,
   parseInbox,
   parseNudgeUrl,
   waitKey,
@@ -630,6 +632,7 @@ function applyExternalNudge(msg, { poll = true } = {}) {
   overlay = { ...msg, at: Date.now() };
   ackedWaitKey = "";
   lastNudgeAt = Date.now();
+  win?.webContents.send("pet-whisper", overlayWhisper(msg));
   if (poll) void pollDesk();
 }
 
@@ -776,15 +779,17 @@ async function pollDesk({ withCal = false } = {}) {
     }
     const rawAgents = (agentsSnap.agents || []).filter((a) => a.id !== "grok-bot");
     if (grokBot.status !== "idle") rawAgents.unshift(grokBot);
+    const overlayId = overlayAgentId(overlay?.tool);
     if (
-      overlay?.status === "waiting" &&
-      !rawAgents.some((a) => a.id === "grok-bot" && a.status === "waiting")
+      overlay &&
+      (overlay.status === "waiting" || overlay.status === "error") &&
+      !rawAgents.some((a) => a.id === overlayId && a.status === overlay.status)
     ) {
       rawAgents.unshift({
-        id: "grok-bot",
+        id: overlayId,
         name: overlay.tool || "Grok Bot",
-        status: "waiting",
-        label: "needs you",
+        status: overlay.status,
+        label: overlay.status === "error" ? "error" : "needs you",
         threads: 1,
         cwd: overlay.name || "",
         path: "",

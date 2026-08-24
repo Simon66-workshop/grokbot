@@ -1,6 +1,6 @@
 "use strict";
 (() => {
-  // src/lib/grokbot/types.ts
+  // ../../workspace/src/lib/grokbot/types.ts
   var PATH_N = 64;
   var EYE_N = 48;
   var FACE_R = 100;
@@ -8,7 +8,7 @@
   var GAZE_GAIN_X = 22;
   var GAZE_GAIN_Y = 14;
 
-  // src/lib/grokbot/math.ts
+  // ../../workspace/src/lib/grokbot/math.ts
   function clamp(v, a, b) {
     return Math.max(a, Math.min(b, v));
   }
@@ -89,7 +89,7 @@
     return out;
   }
 
-  // src/lib/grokbot/expressions.ts
+  // ../../workspace/src/lib/grokbot/expressions.ts
   var e = (x, y, w, h, deg, round = 1, alpha = 1) => ({
     x,
     y,
@@ -103,9 +103,9 @@
     {
       id: 0,
       name: "Rest",
-      // Chubby ovals, generous gap — cute twins, not quotation marks.
-      left: e(-20, -12, 22, 26, 2),
-      right: e(44, -11, 21.5, 25.5, 2)
+      // Official Grok Bot: compact circular dots, not giant ovals.
+      left: e(-22, -10, 10.6, 11, 0),
+      right: e(26, -9.5, 10.3, 10.7, 0)
     },
     {
       id: 1,
@@ -134,8 +134,8 @@
     {
       id: 5,
       name: "Joy",
-      left: e(-16, -4, 20, 32, 2),
-      right: e(42, -3, 19.5, 31, 2)
+      left: e(-20, -6, 12, 13.2, 0),
+      right: e(24, -5.5, 11.6, 12.8, 0)
     },
     {
       id: 6,
@@ -256,7 +256,7 @@
     return EXPRESSIONS[(id % 25 + 25) % 25];
   }
 
-  // src/lib/grokbot/paths.ts
+  // ../../workspace/src/lib/grokbot/paths.ts
   function stadiumPath(eye, n = EYE_N) {
     const pts = [];
     const hw = Math.max(0.4, eye.w);
@@ -346,7 +346,7 @@
     return resampleClosed(raw, PATH_N);
   }
 
-  // src/lib/grokbot/shapes.ts
+  // ../../workspace/src/lib/grokbot/shapes.ts
   function bodyForShape(shape, time = 0) {
     switch (shape) {
       case "circle":
@@ -365,7 +365,7 @@
     }
   }
 
-  // src/lib/grokbot/demo.ts
+  // ../../workspace/src/lib/grokbot/demo.ts
   var DEMO_CUES = [
     {
       at: 0,
@@ -593,7 +593,7 @@
     }
   ];
 
-  // src/lib/grokbot/scenes.ts
+  // ../../workspace/src/lib/grokbot/scenes.ts
   var SCENES = {
     work: {
       label: "Work",
@@ -654,7 +654,7 @@
     return v === "work" || v === "companion" || v === "demo";
   }
 
-  // src/lib/grokbot/color.ts
+  // ../../workspace/src/lib/grokbot/color.ts
   var GROK_BLUE = "#1b56f3";
   var INK = "#161513";
   var FACE_PRESETS = [
@@ -899,7 +899,7 @@
     ctx2.stroke();
   }
 
-  // src/lib/grokbot/hysteresis.ts
+  // ../../workspace/src/lib/grokbot/hysteresis.ts
   var MOOD_RANK = {
     idle: 0,
     look: 1,
@@ -947,7 +947,7 @@
     };
   }
 
-  // src/lib/grokbot/engine.ts
+  // ../../workspace/src/lib/grokbot/engine.ts
   var BOUNCE_DIRS = [
     { x: 0, y: 1, faces: [5, 3, 20, 10] },
     { x: 0, y: -0.42, faces: [4, 6, 7, 15] },
@@ -1152,10 +1152,10 @@
     }
     seedOrbits() {
       this.orbits = [
-        { rx: 118, ry: 42, tilt: 0.7, yaw: 0.2, speed: 0.85, phase: 0, hueA: 12, hueB: 48, width: 5.5 },
-        { rx: 108, ry: 54, tilt: -0.55, yaw: 1.1, speed: -0.62, phase: 1.4, hueA: 265, hueB: 200, width: 5 },
-        { rx: 96, ry: 70, tilt: 1.05, yaw: 2.2, speed: 0.48, phase: 2.6, hueA: 165, hueB: 195, width: 4.5 },
-        { rx: 124, ry: 28, tilt: 0.25, yaw: 0.6, speed: 1.05, phase: 0.8, hueA: 300, hueB: 170, width: 4 }
+        { rx: 122, ry: 44, tilt: 0.7, yaw: 0.2, speed: 0.85, phase: 0, hueA: 12, hueB: 48, width: 5.5 },
+        { rx: 116, ry: 52, tilt: -0.55, yaw: 1.1, speed: -0.62, phase: 1.4, hueA: 265, hueB: 200, width: 5 },
+        { rx: 112, ry: 64, tilt: 1.05, yaw: 2.2, speed: 0.48, phase: 2.6, hueA: 165, hueB: 195, width: 4.5 },
+        { rx: 130, ry: 32, tilt: 0.25, yaw: 0.6, speed: 1.05, phase: 0.8, hueA: 300, hueB: 170, width: 4 }
       ];
     }
     on(ev, fn) {
@@ -1801,7 +1801,7 @@
     }
   };
 
-  // src/lib/grokbot/renderer.ts
+  // ../../workspace/src/lib/grokbot/renderer.ts
   function drawPupil(ctx2, eye, side, lookX, lookY, alpha) {
     const inboard = side === "left" ? 1 : -1;
     const gx = clamp(lookX, -1, 1);
@@ -1868,9 +1868,14 @@
     const faceW = engine.t.faceW.value;
     const lookX = engine.t.gazeX.value + engine.t.yaw.value * 0.55;
     const lookY = engine.t.gazeY.value + engine.t.pitch.value * 0.45;
+    const bodyClip = {
+      cx: lookX * 4,
+      cy: lookY * 3.5,
+      r: FACE_R * bodyScale + 2
+    };
     drawTrail(ctx2, engine);
-    if (orbitW > 0.02) drawOrbits(ctx2, engine, orbitW, -1);
-    if (streakW > 0.02) drawStreaks(ctx2, engine, streakW, -1);
+    if (orbitW > 0.02) drawOrbits(ctx2, engine, orbitW, -1, bodyClip);
+    if (streakW > 0.02) drawStreaks(ctx2, engine, streakW, -1, bodyClip);
     const hideBody = dotsW > 0.45;
     if (!hideBody && faceW > 0.08) {
       drawContactShadow(ctx2, faceW, bodyScale, hop, hopX, lookX, lookY);
@@ -1919,8 +1924,8 @@
     }
     if (dotsW > 0.04) drawLoadingDots(ctx2, engine, face, theme, dotsW);
     if (satW > 0.04) drawSatellites(ctx2, engine, face, theme, satW);
-    if (orbitW > 0.02) drawOrbits(ctx2, engine, orbitW, 1);
-    if (streakW > 0.02) drawStreaks(ctx2, engine, streakW, 1);
+    if (orbitW > 0.02) drawOrbits(ctx2, engine, orbitW, 1, bodyClip);
+    if (streakW > 0.02) drawStreaks(ctx2, engine, streakW, 1, bodyClip);
     drawSparks(ctx2, engine);
     if (engine.debug) drawDebug(ctx2, engine, theme);
     ctx2.restore();
@@ -2029,8 +2034,16 @@
     }
     ctx2.restore();
   }
-  function drawOrbits(ctx2, engine, w, hemisphere) {
+  function clipOutsideBody(ctx2, clip) {
+    ctx2.beginPath();
+    ctx2.rect(-4e3, -4e3, 8e3, 8e3);
+    ctx2.arc(clip.cx, clip.cy, clip.r, 0, Math.PI * 2, true);
+    ctx2.clip("evenodd");
+  }
+  function drawOrbits(ctx2, engine, w, hemisphere, clip) {
     const samples = 72;
+    ctx2.save();
+    if (hemisphere > 0) clipOutsideBody(ctx2, clip);
     for (const o of engine.orbits) {
       const pts = [];
       for (let i = 0; i <= samples; i++) {
@@ -2053,12 +2066,16 @@
       ctx2.lineJoin = "round";
       ctx2.lineWidth = o.width;
       ctx2.globalAlpha = w * 0.92;
+      const rim = clip.r + o.width * 0.6;
       for (let i = 0; i < pts.length - 1; i++) {
         const a = pts[i];
         const b = pts[i + 1];
         const midZ = (a.z + b.z) / 2;
-        if (hemisphere < 0 && midZ > 8) continue;
-        if (hemisphere > 0 && midZ < -8) continue;
+        const mx = (a.x + b.x) / 2;
+        const my = (a.y + b.y) / 2;
+        if (hemisphere < 0 && midZ > 2) continue;
+        if (hemisphere > 0 && midZ < -2) continue;
+        if (hemisphere > 0 && Math.hypot(mx - clip.cx, my - clip.cy) < rim) continue;
         const u = i / (pts.length - 1);
         const h = lerp(o.hueA, o.hueB, u);
         ctx2.beginPath();
@@ -2069,8 +2086,9 @@
       }
       ctx2.restore();
     }
+    ctx2.restore();
   }
-  function drawStreaks(ctx2, engine, w, hemisphere) {
+  function drawStreaks(ctx2, engine, w, hemisphere, clip) {
     if (hemisphere < 0) return;
     const t = performance.now() / 1e3;
     const streaks = [
@@ -2079,6 +2097,7 @@
       { y: -50, rot: -0.52, h0: 280, h1: 330, len: 110 }
     ];
     ctx2.save();
+    clipOutsideBody(ctx2, clip);
     ctx2.globalAlpha = w;
     ctx2.lineCap = "round";
     for (const s of streaks) {
@@ -2160,7 +2179,7 @@
     ctx2.restore();
   }
 
-  // src/lib/grokbot/sfx.ts
+  // ../../workspace/src/lib/grokbot/sfx.ts
   var MUTE_KEY = "grok-sfx-muted";
   var ctx = null;
   var muted = readMuted();
@@ -2226,7 +2245,7 @@
     }
   }
 
-  // src/lib/grokbot/sizes.ts
+  // ../../workspace/src/lib/grokbot/sizes.ts
   var BOT_SIZES = {
     menubar: { box: 22, faceScale: 0.46, label: "Menu bar" },
     pet: { box: 200, faceScale: 0.3, label: "Small" },
@@ -2235,14 +2254,14 @@
     hero: { box: 720, faceScale: 0.22, label: "Hero" }
   };
 
-  // src/lib/grokbot/registry.ts
+  // ../../workspace/src/lib/grokbot/registry.ts
   var stack = [];
   function registerEngine(engine) {
     if (engine) stack.push(engine);
     else stack.pop();
   }
 
-  // src/lib/grokbot/layout.ts
+  // ../../workspace/src/lib/grokbot/layout.ts
   var PET_SIZES = {
     s: { box: 200, faceScale: 0.3, label: "S", hint: "Small \xB7 200" },
     m: { box: 320, faceScale: 0.33, label: "M", hint: "Medium \xB7 320" },
@@ -2300,6 +2319,12 @@
     } catch {
     }
   }
+  function dockMainFor(box, faceScale) {
+    const radius = box * faceScale;
+    const lift = faceScale > 0.28 ? 0.06 * radius : 0;
+    const ballBottom = box / 2 - lift + radius;
+    return Math.round(Math.max(box - 72, ballBottom + 16));
+  }
   function layoutFor(id) {
     const size = PET_SIZES[id];
     const box = size.box;
@@ -2312,7 +2337,7 @@
       box,
       faceScale: size.faceScale,
       inset,
-      dockMain: box - 72,
+      dockMain: dockMainFor(box, size.faceScale),
       faceSideTop: Math.round((h - box) / 2),
       ball: {
         bottom: { x: STAGE_W / 2, y: box / 2 },
@@ -2330,7 +2355,7 @@
     return m >= 9 * 60 && m < 18 * 60;
   }
 
-  // src/lib/grokbot/desk-core.js
+  // ../../workspace/src/lib/grokbot/desk-core.js
   var EMPTY_POMO = {
     running: false,
     phase: "idle",
@@ -2489,7 +2514,7 @@
     return { snap, toggle, skip, tick, begin };
   }
 
-  // src/lib/grokbot/pet-shell.ts
+  // ../../workspace/src/lib/grokbot/pet-shell.ts
   var HOLD_MS = 220;
   var TAP_MS = 280;
   var DBL_MS = 340;
@@ -2981,7 +3006,11 @@
     function paintAgents() {
       if (!agentsEl) return;
       agentsEl.replaceChildren();
-      const list = watchCodex ? desk.agents.filter((a) => a.status !== "idle") : [];
+      const list = desk.agents.filter((a) => {
+        if (a.status === "idle") return false;
+        if (watchCodex) return true;
+        return a.status === "waiting" || a.status === "error";
+      });
       if (!list.length) {
         agentsEl.hidden = true;
         return;
@@ -3138,13 +3167,14 @@
       paintDesk();
       engine.setMood(moodFromDesk(snap));
       syncAutoWork();
+      const waiting = snap.agents.find((a) => a.status === "waiting");
+      const running = snap.agents.find((a) => a.status === "running");
+      const errored = snap.agents.find((a) => a.status === "error");
+      const done = snap.agents.find((a) => a.status === "done");
+      if ((waiting || errored) && !dockOpen) showDock(true);
       if (!fromWatch) return;
       const nextAgents = snap.agents.map((a) => `${a.id}:${a.status}`).join("|");
       if (nextAgents !== prevAgents) {
-        const waiting = snap.agents.find((a) => a.status === "waiting");
-        const running = snap.agents.find((a) => a.status === "running");
-        const errored = snap.agents.find((a) => a.status === "error");
-        const done = snap.agents.find((a) => a.status === "done");
         engine.noteInput();
         if (errored) {
           engine.setExpression(17);
@@ -3600,7 +3630,6 @@
     window.pet?.setScene?.(engine.scene);
     window.pet?.setMuted?.(isMuted());
     window.pet?.setAutoWork?.(autoWork);
-    window.pet?.setCodexWatch?.(watchCodex);
     if (web) applyDesk(demoDesk(), false);
     if (studio && opts.studioHref) {
       studio.hidden = false;
@@ -3897,6 +3926,6 @@
     };
   }
 
-  // mac/companion.ts
+  // ../../workspace/mac/companion.ts
   bootMacCompanion();
 })();

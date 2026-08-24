@@ -589,7 +589,11 @@ export function bootMacCompanion(opts: BootOptions = {}) {
   function paintAgents() {
     if (!agentsEl) return;
     agentsEl.replaceChildren();
-    const list = watchCodex ? desk.agents.filter((a) => a.status !== "idle") : [];
+    const list = desk.agents.filter((a) => {
+      if (a.status === "idle") return false;
+      if (watchCodex) return true;
+      return a.status === "waiting" || a.status === "error";
+    });
     if (!list.length) {
       agentsEl.hidden = true;
       return;
@@ -755,13 +759,14 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     paintDesk();
     engine.setMood(moodFromDesk(snap));
     syncAutoWork();
+    const waiting = snap.agents.find((a) => a.status === "waiting");
+    const running = snap.agents.find((a) => a.status === "running");
+    const errored = snap.agents.find((a) => a.status === "error");
+    const done = snap.agents.find((a) => a.status === "done");
+    if ((waiting || errored) && !dockOpen) showDock(true);
     if (!fromWatch) return;
     const nextAgents = snap.agents.map((a) => `${a.id}:${a.status}`).join("|");
     if (nextAgents !== prevAgents) {
-      const waiting = snap.agents.find((a) => a.status === "waiting");
-      const running = snap.agents.find((a) => a.status === "running");
-      const errored = snap.agents.find((a) => a.status === "error");
-      const done = snap.agents.find((a) => a.status === "done");
       engine.noteInput();
       if (errored) {
         engine.setExpression(17);
@@ -1255,7 +1260,6 @@ export function bootMacCompanion(opts: BootOptions = {}) {
   window.pet?.setScene?.(engine.scene);
   window.pet?.setMuted?.(isMuted());
   window.pet?.setAutoWork?.(autoWork);
-  window.pet?.setCodexWatch?.(watchCodex);
 
   if (web) applyDesk(demoDesk(), false);
 

@@ -78,6 +78,14 @@ export function writeCodexWatch(on: boolean) {
   }
 }
 
+/** Dock top so chips sit below the body disk, not on it. */
+export function dockMainFor(box: number, faceScale: number) {
+  const radius = box * faceScale;
+  const lift = faceScale > 0.28 ? 0.06 * radius : 0;
+  const ballBottom = box / 2 - lift + radius;
+  return Math.round(Math.max(box - 72, ballBottom + 16));
+}
+
 export function layoutFor(id: PetSizeId) {
   const size = PET_SIZES[id];
   const box = size.box;
@@ -90,7 +98,7 @@ export function layoutFor(id: PetSizeId) {
     box,
     faceScale: size.faceScale,
     inset,
-    dockMain: box - 72,
+    dockMain: dockMainFor(box, size.faceScale),
     faceSideTop: Math.round((h - box) / 2),
     ball: {
       bottom: { x: STAGE_W / 2, y: box / 2 },

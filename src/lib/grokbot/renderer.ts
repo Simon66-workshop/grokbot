@@ -99,9 +99,15 @@ export function drawGrokBot(
   const lookX = engine.t.gazeX.value + engine.t.yaw.value * 0.55;
   const lookY = engine.t.gazeY.value + engine.t.pitch.value * 0.45;
 
+  const bodyClip = {
+    cx: lookX * 4,
+    cy: lookY * 3.5,
+    r: FACE_R * bodyScale + 2,
+  };
+
   drawTrail(ctx, engine);
-  if (orbitW > 0.02) drawOrbits(ctx, engine, orbitW, -1);
-  if (streakW > 0.02) drawStreaks(ctx, engine, streakW, -1);
+  if (orbitW > 0.02) drawOrbits(ctx, engine, orbitW, -1, bodyClip);
+  if (streakW > 0.02) drawStreaks(ctx, engine, streakW, -1, bodyClip);
 
   const hideBody = dotsW > 0.45;
   if (!hideBody && faceW > 0.08) {
@@ -160,8 +166,8 @@ export function drawGrokBot(
   if (dotsW > 0.04) drawLoadingDots(ctx, engine, face, theme, dotsW);
   if (satW > 0.04) drawSatellites(ctx, engine, face, theme, satW);
 
-  if (orbitW > 0.02) drawOrbits(ctx, engine, orbitW, 1);
-  if (streakW > 0.02) drawStreaks(ctx, engine, streakW, 1);
+  if (orbitW > 0.02) drawOrbits(ctx, engine, orbitW, 1, bodyClip);
+  if (streakW > 0.02) drawStreaks(ctx, engine, streakW, 1, bodyClip);
   drawSparks(ctx, engine);
 
   if (engine.debug) drawDebug(ctx, engine, theme);
@@ -314,13 +320,27 @@ function drawSatellites(
   ctx.restore();
 }
 
+function clipOutsideBody(
+  ctx: CanvasRenderingContext2D,
+  clip: { cx: number; cy: number; r: number },
+) {
+  ctx.beginPath();
+  ctx.rect(-4000, -4000, 8000, 8000);
+  ctx.arc(clip.cx, clip.cy, clip.r, 0, Math.PI * 2, true);
+  ctx.clip("evenodd");
+}
+
 function drawOrbits(
   ctx: CanvasRenderingContext2D,
   engine: GrokBotEngine,
   w: number,
   hemisphere: -1 | 1,
+  clip: { cx: number; cy: number; r: number },
 ) {
   const samples = 72;
+  ctx.save();
+  // Front strokes must never paint on the face / body disk.
+  if (hemisphere > 0) clipOutsideBody(ctx, clip);
   for (const o of engine.orbits) {
     const pts: { x: number; y: number; z: number }[] = [];
     for (let i = 0; i <= samples; i++) {
@@ -343,12 +363,16 @@ function drawOrbits(
     ctx.lineJoin = "round";
     ctx.lineWidth = o.width;
     ctx.globalAlpha = w * 0.92;
+    const rim = clip.r + o.width * 0.6;
     for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i]!;
       const b = pts[i + 1]!;
       const midZ = (a.z + b.z) / 2;
-      if (hemisphere < 0 && midZ > 8) continue;
-      if (hemisphere > 0 && midZ < -8) continue;
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      if (hemisphere < 0 && midZ > 2) continue;
+      if (hemisphere > 0 && midZ < -2) continue;
+      if (hemisphere > 0 && Math.hypot(mx - clip.cx, my - clip.cy) < rim) continue;
       const u = i / (pts.length - 1);
       const h = lerp(o.hueA, o.hueB, u);
       ctx.beginPath();
@@ -359,6 +383,7 @@ function drawOrbits(
     }
     ctx.restore();
   }
+  ctx.restore();
 }
 
 function drawStreaks(
@@ -366,6 +391,7 @@ function drawStreaks(
   engine: GrokBotEngine,
   w: number,
   hemisphere: -1 | 1,
+  clip: { cx: number; cy: number; r: number },
 ) {
   if (hemisphere < 0) return;
   const t = performance.now() / 1000;
@@ -375,6 +401,7 @@ function drawStreaks(
     { y: -50, rot: -0.52, h0: 280, h1: 330, len: 110 },
   ];
   ctx.save();
+  clipOutsideBody(ctx, clip);
   ctx.globalAlpha = w;
   ctx.lineCap = "round";
   for (const s of streaks) {

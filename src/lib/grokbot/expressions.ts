@@ -33,9 +33,9 @@ export const EXPRESSIONS: ExpressionDef[] = [
   {
     id: 0,
     name: "Rest",
-    // Chubby ovals, generous gap — cute twins, not quotation marks.
-    left: e(-20, -12, 22, 26, 2),
-    right: e(44, -11, 21.5, 25.5, 2),
+    // Official Grok Bot: compact circular dots, not giant ovals.
+    left: e(-22, -10, 10.6, 11, 0),
+    right: e(26, -9.5, 10.3, 10.7, 0),
   },
   {
     id: 1,
@@ -64,8 +64,8 @@ export const EXPRESSIONS: ExpressionDef[] = [
   {
     id: 5,
     name: "Joy",
-    left: e(-16, -4, 20, 32, 2),
-    right: e(42, -3, 19.5, 31, 2),
+    left: e(-20, -6, 12, 13.2, 0),
+    right: e(24, -5.5, 11.6, 12.8, 0),
   },
   {
     id: 6,
