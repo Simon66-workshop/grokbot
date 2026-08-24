@@ -13,6 +13,7 @@ import { parseMeetingOut, buildDesk } from "../electron/desk.mjs";
 import { notifyCopy } from "../electron/codex.mjs";
 import { grokBotWaitingFromWindows, isGrokBotProcess } from "../electron/grok-bot-app.mjs";
 import { classifyPermOut, parsePermProbe, probePerms, resolvePerms, unwrapPermCmd } from "../electron/perms.mjs";
+import { readFileSync } from "node:fs";
 import { bannersQuiet, nextNudge, overlayAgentId, overlayWhisper, parseInbox, parseMacScene, parseNudgeUrl, waitKey } from "../electron/nudge.mjs";
 import { PET_SIZES, dockMainFor } from "../electron/layout.mjs";
 import { AGENT_RANK, createGate, createLatch, inWorkHoursHyst, soonHyst, stampMeeting, tickMeeting } from "../electron/hysteresis.mjs";
@@ -250,6 +251,15 @@ test("overlayWhisper names the tool and session", () => {
   assert.equal(overlayWhisper({ tool: "Codex", name: "codex-remind-test" }), "Codex · codex-remind-test");
   assert.equal(overlayWhisper({ tool: "Codex", status: "waiting" }), "Codex · waiting");
   assert.equal(overlayWhisper({ tool: "Codex", name: "new-chat" }), "Codex · new-chat");
+});
+
+test("control dock never auto-opens from waiting or whisper", () => {
+  const shell = readFileSync(new URL("../src/lib/grokbot/pet-shell.ts", import.meta.url), "utf8");
+  const bundled = readFileSync(new URL("../mac/grokbot.js", import.meta.url), "utf8");
+  assert.equal(shell.includes("showDock(true)"), false);
+  assert.equal(bundled.includes("showDock(true)"), false);
+  assert.match(shell, /:not\(\.open\) #actions/);
+  assert.match(bundled, /:not\(\.open\) #actions/);
 });
 
 test("dockMain keeps chips below the body disk", () => {

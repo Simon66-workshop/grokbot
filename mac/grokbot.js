@@ -2714,10 +2714,6 @@
 .grok-stage .whisper,
 .grok-stage .agents,
 .grok-stage .desk { pointer-events: auto; }
-.grok-stage:not(.open) .bar,
-.grok-stage:not(.open) #wheel,
-.grok-stage:not(.open) .presets,
-.grok-stage:not(.open) .studio { display: none; }
 .grok-stage.open .dock { pointer-events: auto; }
 .grok-stage .presets { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .grok-stage .presets button {
@@ -2839,6 +2835,14 @@
   width: 100%;
   text-align: center;
   padding: 5px 8px;
+}
+.grok-stage:not(.open) #actions,
+.grok-stage:not(.open) #scenes,
+.grok-stage:not(.open) #prefs,
+.grok-stage:not(.open) #wheel,
+.grok-stage:not(.open) .presets,
+.grok-stage:not(.open) .studio {
+  display: none;
 }
 `;
   function injectStyle() {
