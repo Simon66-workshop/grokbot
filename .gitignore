@@ -8,6 +8,7 @@ dist-pet
 *.log
 /tmp
 screenshots
+scripts/.desk-qa-shots
 artifacts
 vendor
 .grok

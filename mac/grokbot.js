@@ -104,8 +104,8 @@
       id: 0,
       name: "Rest",
       // Chubby ovals, generous gap — cute twins, not quotation marks.
-      left: e(-10, -15, 12.8, 17.6, 11),
-      right: e(50, -13, 11.8, 16.2, 11)
+      left: e(-20, -12, 22, 26, 2),
+      right: e(44, -11, 21.5, 25.5, 2)
     },
     {
       id: 1,
@@ -134,8 +134,8 @@
     {
       id: 5,
       name: "Joy",
-      left: e(-10, -6, 15.2, 28, 11),
-      right: e(52, -3, 14, 26, 11)
+      left: e(-16, -4, 20, 32, 2),
+      right: e(42, -3, 19.5, 31, 2)
     },
     {
       id: 6,
@@ -764,11 +764,11 @@
   }
   var MOOD_FACE = {
     idle: 0,
-    look: 14,
-    think: 9,
-    wait: 10,
+    look: 0,
+    think: 0,
+    wait: 0,
     joy: 5,
-    error: 17,
+    error: 0,
     play: 5,
     sleep: 7
   };
@@ -1328,7 +1328,7 @@
           this.blink();
           break;
         case "look":
-          this.setExpression(this.wantExpression || 14);
+          this.setExpression(this.wantExpression);
           this.tgt.faceW = 1;
           this.tgt.dotsW = 0;
           this.tgt.exclaimW = 0;
@@ -1438,7 +1438,7 @@
           this.stateUntil = this.elapsed + 1.5;
           break;
         case "think":
-          this.setExpression(this.wantExpression || 9);
+          this.setExpression(this.wantExpression === 0 ? 9 : this.wantExpression);
           this.tgt.orbitW = 1;
           this.tgt.eyeAlpha = 1;
           this.tgt.faceW = 1;
@@ -1524,9 +1524,8 @@
       const blink = this.t.blink.value;
       const leftT = { ...expr.left, h: expr.left.h * blink, alpha: expr.left.alpha };
       const rightT = { ...expr.right, h: expr.right.h * blink, alpha: expr.right.alpha };
-      const eyeSpeed = this.state === "bounce" ? speed * 0.82 : speed * 0.52;
-      stepEye(this.left, leftT, dt, eyeSpeed);
-      stepEye(this.right, rightT, dt, eyeSpeed);
+      stepEye(this.left, leftT, dt, speed);
+      stepEye(this.right, rightT, dt, speed);
       const bodyTarget = this.tgt.exclaimW > 0.55 ? exclaimStem() : bodyForShape(this.shape, this.elapsed);
       if (this.bodyCurr.length !== bodyTarget.length) {
         this.bodyCurr = bodyTarget.map((p) => ({ x: springOf(p.x), y: springOf(p.y) }));
@@ -1717,8 +1716,8 @@
         this.tgt.gazeX = this.pointer.x;
         this.tgt.gazeY = this.pointer.y;
         if (this.state !== "bounce") {
-          this.tgt.yaw = this.pointer.x * 0.48;
-          this.tgt.pitch = this.pointer.y * 0.32;
+          this.tgt.yaw = this.pointer.x * 0.2;
+          this.tgt.pitch = this.pointer.y * 0.14;
         }
       } else if (policy.autoLook && this.autoIdle && this.state === "idle" && !this.demoPlaying) {
         const t = this.elapsed;
@@ -1740,16 +1739,38 @@
       const scale = this.t.eyeScale.value * (this.emphasis ? 1.12 : 1);
       const pr = projectSphere(x, y, this.t.yaw.value, this.t.pitch.value, FACE_R);
       const foreshort = lerp(0.28, 1, pr.visible);
+      const oval = src.h >= src.w * 0.95;
+      const crushH = src.h * scale * lerp(oval ? 0.88 : 0.55, 1, pr.visible);
+      const crushW = src.w * scale * (oval ? lerp(0.88, 1, pr.visible) : foreshort);
       const eye = {
         x: pr.x,
         y: pr.y,
-        w: src.w * scale * foreshort,
-        h: src.h * scale * lerp(0.55, 1, pr.visible),
+        w: oval ? Math.max(crushW, src.w * scale * 0.88) : crushW,
+        h: oval ? Math.max(crushH, src.h * scale * 0.88) : crushH,
         rot: (this.flipX ? -src.rot : src.rot) + this.t.yaw.value * 0.25,
         round: src.round,
         alpha: src.alpha * this.t.eyeAlpha.value * pr.visible
       };
-      return { eye, depth: pr.z, path: stadiumPath(eye), visible: pr.visible };
+      return { eye, depth: pr.z, path: stadiumPath(eye), visible: pr.visible, side };
+    }
+    projectedEyes() {
+      const left = this.projectedEye("left");
+      const right = this.projectedEye("right");
+      const dx = right.eye.x - left.eye.x;
+      const dy = right.eye.y - left.eye.y;
+      const dist2 = Math.hypot(dx, dy);
+      const minGap = Math.max(36, 0.65 * (left.eye.w + right.eye.w));
+      if (dist2 >= minGap) return { left, right };
+      const nx = dist2 < 1e-4 ? 1 : dx / dist2;
+      const ny = dist2 < 1e-4 ? 0 : dy / dist2;
+      const push = (minGap - dist2) / 2;
+      left.eye.x -= nx * push;
+      left.eye.y -= ny * push;
+      right.eye.x += nx * push;
+      right.eye.y += ny * push;
+      left.path = stadiumPath(left.eye);
+      right.path = stadiumPath(right.eye);
+      return { left, right };
     }
     snapshot() {
       return {
@@ -1781,6 +1802,34 @@
   };
 
   // src/lib/grokbot/renderer.ts
+  function drawPupil(ctx2, eye, side, lookX, lookY, alpha) {
+    const inboard = side === "left" ? 1 : -1;
+    const gx = clamp(lookX, -1, 1);
+    const gy = clamp(lookY, -1, 1);
+    const px = eye.x + inboard * eye.w * 0.08 + gx * eye.w * 0.16;
+    const py = eye.y + gy * eye.h * 0.14;
+    ctx2.save();
+    ctx2.globalAlpha = alpha;
+    ctx2.translate(px, py);
+    ctx2.rotate(eye.rot);
+    ctx2.fillStyle = "#0a0a0a";
+    ctx2.beginPath();
+    ctx2.ellipse(0, 0, Math.max(2.2, eye.w * 0.28), Math.max(2.8, eye.h * 0.32), 0, 0, Math.PI * 2);
+    ctx2.fill();
+    ctx2.fillStyle = "#fffdf8";
+    ctx2.beginPath();
+    ctx2.ellipse(
+      inboard * eye.w * 0.1 - gx * 0.4,
+      -eye.h * 0.16 - gy * 0.3,
+      Math.max(1.1, eye.w * 0.09),
+      Math.max(1, eye.h * 0.07),
+      0,
+      0,
+      Math.PI * 2
+    );
+    ctx2.fill();
+    ctx2.restore();
+  }
   function fillPath(ctx2, pts) {
     if (!pts.length) return;
     ctx2.beginPath();
@@ -1833,23 +1882,25 @@
       1 + lookX * lookX * 0.03 - lookY * lookY * 0.015,
       1 + lookY * lookY * 0.025 - lookX * lookX * 0.018
     );
-    ctx2.scale(bodyScale * (1 / squash), bodyScale * squash);
     const body = engine.bodyPoints();
     if (!hideBody && (faceW > 0.02 || exclaimW > 0.02)) {
+      ctx2.save();
+      ctx2.scale(bodyScale * (1 / squash), bodyScale * squash);
       ctx2.globalAlpha = Math.max(faceW, exclaimW);
       fillPath(ctx2, body);
       ctx2.fillStyle = face;
       ctx2.fill();
       shadeSphere(ctx2, body, face, lookX, lookY);
-      ctx2.globalAlpha = 1;
+      ctx2.restore();
     }
     if (!hideBody && faceW > 0.05 && engine.t.eyeAlpha.value > 0.02) {
       ctx2.save();
-      fillPath(ctx2, body);
+      ctx2.scale(bodyScale, bodyScale);
+      ctx2.beginPath();
+      ctx2.arc(0, 0, FACE_R * 0.96, 0, Math.PI * 2);
       ctx2.clip();
-      const L = engine.projectedEye("left");
-      const R = engine.projectedEye("right");
-      const eyes = L.depth <= R.depth ? [L, R] : [R, L];
+      const { left, right } = engine.projectedEyes();
+      const eyes = left.depth <= right.depth ? [left, right] : [right, left];
       for (const eye of eyes) {
         if (eye.eye.alpha < 0.02) continue;
         const a = clamp(eye.eye.alpha * faceW, 0, 1);
@@ -1857,6 +1908,7 @@
         fillPath(ctx2, eye.path);
         ctx2.fillStyle = eyeFill;
         ctx2.fill();
+        drawPupil(ctx2, eye.eye, eye.side, lookX, lookY, a);
       }
       ctx2.restore();
       ctx2.globalAlpha = 1;
@@ -2091,9 +2143,8 @@
     ctx2.beginPath();
     ctx2.arc(0, 0, FACE_R, 0, Math.PI * 2);
     ctx2.stroke();
-    const L = engine.projectedEye("left");
-    const R = engine.projectedEye("right");
-    for (const eye of [L, R]) {
+    const { left, right } = engine.projectedEyes();
+    for (const eye of [left, right]) {
       ctx2.beginPath();
       ctx2.arc(eye.eye.x, eye.eye.y, 3.2, 0, Math.PI * 2);
       ctx2.fillStyle = theme.grok;
@@ -2179,7 +2230,7 @@
   var BOT_SIZES = {
     menubar: { box: 22, faceScale: 0.46, label: "Menu bar" },
     pet: { box: 200, faceScale: 0.3, label: "Small" },
-    medium: { box: 320, faceScale: 0.26, label: "Medium" },
+    medium: { box: 320, faceScale: 0.33, label: "Medium" },
     companion: { box: 440, faceScale: 0.24, label: "Large" },
     hero: { box: 720, faceScale: 0.22, label: "Hero" }
   };
@@ -2194,7 +2245,7 @@
   // src/lib/grokbot/layout.ts
   var PET_SIZES = {
     s: { box: 200, faceScale: 0.3, label: "S", hint: "Small \xB7 200" },
-    m: { box: 320, faceScale: 0.26, label: "M", hint: "Medium \xB7 320" },
+    m: { box: 320, faceScale: 0.33, label: "M", hint: "Medium \xB7 320" },
     l: { box: 440, faceScale: 0.24, label: "L", hint: "Large \xB7 440" }
   };
   var STAGE_W = 580;
@@ -2578,7 +2629,7 @@
     ink: "#161513",
     paper: "#f3f1ea",
     grok: "#1b56f3",
-    eye: "#fffdf8",
+    eye: "#141414",
     muted: "#6e6a62"
   };
   var ACTIONS = [

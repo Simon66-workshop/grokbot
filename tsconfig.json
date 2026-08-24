@@ -13,5 +13,13 @@
     "baseUrl": ".",
     "paths": { "@/*": ["./src/*"] }
   },
-  "include": ["src", "server"]
+  // Desk pet + web preview host. Leftover Vite/TanStack atelier routes
+  // still import missing app-builder modules and are not on pet:bundle.
+  "include": [
+    "src/lib/grokbot",
+    "src/vite-env.d.ts",
+    "src/main.tsx",
+    "src/components/desktop",
+    "mac/companion.ts"
+  ]
 }

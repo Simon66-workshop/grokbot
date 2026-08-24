@@ -44,6 +44,48 @@ grep -q "exprHoldUntil" mac/grokbot.js || fail "bundle missing exprHoldUntil"
 grep -q "setExpression(5, { hold: 4 })" src/lib/grokbot/pet-shell.ts || fail "Joy hold missing"
 
 echo "== desk-qa"
+VITE_PID=""
+if ! curl -sf -o /dev/null --max-time 2 http://127.0.0.1:8080/; then
+  echo "starting vite on 8080"
+  VITE_LOG="${TMPDIR:-/tmp}/grokbot-handoff-vite.log"
+  npm run dev >"$VITE_LOG" 2>&1 &
+  VITE_PID=$!
+  ready=0
+  i=0
+  while [ "$i" -lt 60 ]; do
+    if curl -sf -o /dev/null --max-time 1 http://127.0.0.1:8080/; then
+      ready=1
+      break
+    fi
+    if ! kill -0 "$VITE_PID" 2>/dev/null; then
+      fail "vite exited before 8080 was ready (see $VITE_LOG)"
+    fi
+    i=$((i + 1))
+    sleep 0.5
+  done
+  [ "$ready" = 1 ] || fail "vite did not start on 8080 (see $VITE_LOG)"
+fi
+cleanup_vite() {
+  if [ -z "$VITE_PID" ]; then
+    return
+  fi
+  queue="$VITE_PID"
+  pids="$VITE_PID"
+  while [ -n "$queue" ]; do
+    next=""
+    for p in $queue; do
+      kids=$(pgrep -P "$p" 2>/dev/null || true)
+      next="$next $kids"
+      pids="$pids $kids"
+    done
+    queue="$next"
+  done
+  for p in $pids; do
+    kill "$p" 2>/dev/null || true
+  done
+  wait "$VITE_PID" 2>/dev/null || true
+}
+trap cleanup_vite EXIT
 QA=$(node scripts/desk-qa.mjs)
 echo "$QA"
 echo "$QA" | grep -q '"errors": \[\]' || fail "desk-qa errors"

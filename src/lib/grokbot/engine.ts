@@ -506,7 +506,7 @@ export class GrokBotEngine {
         this.blink();
         break;
       case "look":
-        this.setExpression(this.wantExpression || 14);
+        this.setExpression(this.wantExpression);
         this.tgt.faceW = 1;
         this.tgt.dotsW = 0;
         this.tgt.exclaimW = 0;
@@ -616,7 +616,7 @@ export class GrokBotEngine {
         this.stateUntil = this.elapsed + 1.5;
         break;
       case "think":
-        this.setExpression(this.wantExpression || 9);
+        this.setExpression(this.wantExpression === 0 ? 9 : this.wantExpression);
         this.tgt.orbitW = 1;
         this.tgt.eyeAlpha = 1;
         this.tgt.faceW = 1;
@@ -710,9 +710,8 @@ export class GrokBotEngine {
     const blink = this.t.blink.value;
     const leftT = { ...expr.left, h: expr.left.h * blink, alpha: expr.left.alpha };
     const rightT = { ...expr.right, h: expr.right.h * blink, alpha: expr.right.alpha };
-    const eyeSpeed = this.state === "bounce" ? speed * 0.82 : speed * 0.52;
-    stepEye(this.left, leftT, dt, eyeSpeed);
-    stepEye(this.right, rightT, dt, eyeSpeed);
+    stepEye(this.left, leftT, dt, speed);
+    stepEye(this.right, rightT, dt, speed);
 
     const bodyTarget = this.tgt.exclaimW > 0.55 ? exclaimStem() : bodyForShape(this.shape, this.elapsed);
     if (this.bodyCurr.length !== bodyTarget.length) {
@@ -944,8 +943,8 @@ export class GrokBotEngine {
       this.tgt.gazeX = this.pointer.x;
       this.tgt.gazeY = this.pointer.y;
       if (this.state !== "bounce") {
-        this.tgt.yaw = this.pointer.x * 0.48;
-        this.tgt.pitch = this.pointer.y * 0.32;
+        this.tgt.yaw = this.pointer.x * 0.2;
+        this.tgt.pitch = this.pointer.y * 0.14;
       }
     } else if (policy.autoLook && this.autoIdle && this.state === "idle" && !this.demoPlaying) {
       const t = this.elapsed;
@@ -969,16 +968,39 @@ export class GrokBotEngine {
     const scale = this.t.eyeScale.value * (this.emphasis ? 1.12 : 1);
     const pr = projectSphere(x, y, this.t.yaw.value, this.t.pitch.value, FACE_R);
     const foreshort = lerp(0.28, 1, pr.visible);
+    const oval = src.h >= src.w * 0.95;
+    const crushH = src.h * scale * lerp(oval ? 0.88 : 0.55, 1, pr.visible);
+    const crushW = src.w * scale * (oval ? lerp(0.88, 1, pr.visible) : foreshort);
     const eye: EyeParams = {
       x: pr.x,
       y: pr.y,
-      w: src.w * scale * foreshort,
-      h: src.h * scale * lerp(0.55, 1, pr.visible),
+      w: oval ? Math.max(crushW, src.w * scale * 0.88) : crushW,
+      h: oval ? Math.max(crushH, src.h * scale * 0.88) : crushH,
       rot: (this.flipX ? -src.rot : src.rot) + this.t.yaw.value * 0.25,
       round: src.round,
       alpha: src.alpha * this.t.eyeAlpha.value * pr.visible,
     };
-    return { eye, depth: pr.z, path: stadiumPath(eye), visible: pr.visible };
+    return { eye, depth: pr.z, path: stadiumPath(eye), visible: pr.visible, side };
+  }
+
+  projectedEyes() {
+    const left = this.projectedEye("left");
+    const right = this.projectedEye("right");
+    const dx = right.eye.x - left.eye.x;
+    const dy = right.eye.y - left.eye.y;
+    const dist = Math.hypot(dx, dy);
+    const minGap = Math.max(36, 0.65 * (left.eye.w + right.eye.w));
+    if (dist >= minGap) return { left, right };
+    const nx = dist < 1e-4 ? 1 : dx / dist;
+    const ny = dist < 1e-4 ? 0 : dy / dist;
+    const push = (minGap - dist) / 2;
+    left.eye.x -= nx * push;
+    left.eye.y -= ny * push;
+    right.eye.x += nx * push;
+    right.eye.y += ny * push;
+    left.path = stadiumPath(left.eye);
+    right.path = stadiumPath(right.eye);
+    return { left, right };
   }
 
   snapshot(): EngineSnapshot {
