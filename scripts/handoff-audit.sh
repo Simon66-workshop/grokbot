@@ -66,11 +66,24 @@ if ! curl -sf -o /dev/null --max-time 2 http://127.0.0.1:8080/; then
   [ "$ready" = 1 ] || fail "vite did not start on 8080 (see $VITE_LOG)"
 fi
 cleanup_vite() {
-  if [ -n "$VITE_PID" ]; then
-    pkill -P "$VITE_PID" 2>/dev/null || true
-    kill "$VITE_PID" 2>/dev/null || true
-    wait "$VITE_PID" 2>/dev/null || true
+  if [ -z "$VITE_PID" ]; then
+    return
   fi
+  queue="$VITE_PID"
+  pids="$VITE_PID"
+  while [ -n "$queue" ]; do
+    next=""
+    for p in $queue; do
+      kids=$(pgrep -P "$p" 2>/dev/null || true)
+      next="$next $kids"
+      pids="$pids $kids"
+    done
+    queue="$next"
+  done
+  for p in $pids; do
+    kill "$p" 2>/dev/null || true
+  done
+  wait "$VITE_PID" 2>/dev/null || true
 }
 trap cleanup_vite EXIT
 QA=$(node scripts/desk-qa.mjs)
