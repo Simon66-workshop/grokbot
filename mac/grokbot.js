@@ -104,8 +104,8 @@
       id: 0,
       name: "Rest",
       // Chubby ovals, generous gap — cute twins, not quotation marks.
-      left: e(-28, -12, 15.6, 24.8, 4),
-      right: e(64, -10, 14.6, 23.2, 4)
+      left: e(-10, -15, 12.8, 17.6, 11),
+      right: e(50, -13, 11.8, 16.2, 11)
     },
     {
       id: 1,
@@ -134,8 +134,8 @@
     {
       id: 5,
       name: "Joy",
-      left: e(-26, -2, 16.8, 31, 4),
-      right: e(66, 0, 15.6, 29, 4)
+      left: e(-10, -6, 15.2, 28, 11),
+      right: e(52, -3, 14, 26, 11)
     },
     {
       id: 6,
@@ -1834,19 +1834,22 @@
       1 + lookX * lookX * 0.03 - lookY * lookY * 0.015,
       1 + lookY * lookY * 0.025 - lookX * lookX * 0.018
     );
-    ctx2.scale(bodyScale * (1 / squash), bodyScale * squash);
     const body = engine.bodyPoints();
     if (!hideBody && (faceW > 0.02 || exclaimW > 0.02)) {
+      ctx2.save();
+      ctx2.scale(bodyScale * (1 / squash), bodyScale * squash);
       ctx2.globalAlpha = Math.max(faceW, exclaimW);
       fillPath(ctx2, body);
       ctx2.fillStyle = face;
       ctx2.fill();
       shadeSphere(ctx2, body, face, lookX, lookY);
-      ctx2.globalAlpha = 1;
+      ctx2.restore();
     }
     if (!hideBody && faceW > 0.05 && engine.t.eyeAlpha.value > 0.02) {
       ctx2.save();
-      fillPath(ctx2, body);
+      ctx2.scale(bodyScale, bodyScale);
+      ctx2.beginPath();
+      ctx2.arc(0, 0, FACE_R * 0.96, 0, Math.PI * 2);
       ctx2.clip();
       const L = engine.projectedEye("left");
       const R = engine.projectedEye("right");

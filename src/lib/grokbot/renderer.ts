@@ -79,21 +79,26 @@ export function drawGrokBot(
     1 + lookX * lookX * 0.03 - lookY * lookY * 0.015,
     1 + lookY * lookY * 0.025 - lookX * lookX * 0.018,
   );
-  ctx.scale(bodyScale * (1 / squash), bodyScale * squash);
 
   const body = engine.bodyPoints();
   if (!hideBody && (faceW > 0.02 || exclaimW > 0.02)) {
+    ctx.save();
+    ctx.scale(bodyScale * (1 / squash), bodyScale * squash);
     ctx.globalAlpha = Math.max(faceW, exclaimW);
     fillPath(ctx, body);
     ctx.fillStyle = face;
     ctx.fill();
     shadeSphere(ctx, body, face, lookX, lookY);
-    ctx.globalAlpha = 1;
+    ctx.restore();
   }
 
+  // Eyes stay in unsquashed face space. Body squash (bounce land 0.45–0.78)
+  // would otherwise turn Rest/Joy ovals into horizontal dashes.
   if (!hideBody && faceW > 0.05 && engine.t.eyeAlpha.value > 0.02) {
     ctx.save();
-    fillPath(ctx, body);
+    ctx.scale(bodyScale, bodyScale);
+    ctx.beginPath();
+    ctx.arc(0, 0, FACE_R * 0.96, 0, Math.PI * 2);
     ctx.clip();
     const L = engine.projectedEye("left");
     const R = engine.projectedEye("right");
