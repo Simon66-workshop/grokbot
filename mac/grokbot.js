@@ -2697,7 +2697,7 @@
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  opacity: 0;
+  opacity: 1;
   pointer-events: none;
   z-index: 3;
 }
@@ -2711,10 +2711,14 @@
 .grok-stage .presets { order: 7; }
 .grok-stage[data-side="top"] .dock { flex-direction: column-reverse; }
 .grok-stage #prefs button.dim { opacity: 0.62; }
-.grok-stage.open .dock {
-  opacity: 1;
-  pointer-events: auto;
-}
+.grok-stage .whisper,
+.grok-stage .agents,
+.grok-stage .desk { pointer-events: auto; }
+.grok-stage:not(.open) .bar,
+.grok-stage:not(.open) #wheel,
+.grok-stage:not(.open) .presets,
+.grok-stage:not(.open) .studio { display: none; }
+.grok-stage.open .dock { pointer-events: auto; }
 .grok-stage .presets { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .grok-stage .presets button {
   width: 14px; height: 14px; border-radius: 999px;
@@ -3171,7 +3175,6 @@
       const running = snap.agents.find((a) => a.status === "running");
       const errored = snap.agents.find((a) => a.status === "error");
       const done = snap.agents.find((a) => a.status === "done");
-      if ((waiting || errored) && !dockOpen) showDock(true);
       if (!fromWatch) return;
       const nextAgents = snap.agents.map((a) => `${a.id}:${a.status}`).join("|");
       if (nextAgents !== prevAgents) {
@@ -3201,7 +3204,6 @@
       whisper = text;
       paintWhisper();
       paintBrief();
-      if (!dockOpen) showDock(true);
       window.clearTimeout(whisperTimer);
       whisperTimer = window.setTimeout(() => {
         if (whisper === text) {
