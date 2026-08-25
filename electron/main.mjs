@@ -14,12 +14,16 @@ import { openPerm, probePerms, resolvePerms } from "./perms.mjs";
 import {
   NUDGE_MS,
   OVERLAY_MS,
+  agentChipKey,
   bannersQuiet,
   nextNudge,
   overlayAgentId,
+  overlayAsAgent,
+  overlayChipKey,
   overlayWhisper,
   parseInbox,
   parseNudgeUrl,
+  shouldInjectOverlay,
   waitKey,
 } from "./nudge.mjs";
 import { AGENT_RANK, createGate, createLatch, soonHyst, stampMeeting, tickMeeting } from "./hysteresis.mjs";
@@ -68,6 +72,7 @@ let cachedPerms = { at: 0, value: EMPTY_DESK.perms };
 let dismissedPerms = new Set();
 let cachedGit = { at: 0, key: "", value: [] };
 let lastInboxMtime = 0;
+const dismissedChips = new Map();
 const meetingGate = createGate({ enterMs: 0, exitMs: 16_000 });
 const focusGate = createGate({ enterMs: 8_000, exitMs: 16_000 });
 const quietGate = createGate({ enterMs: 0, exitMs: 15_000 });
@@ -629,6 +634,9 @@ function applyExternalNudge(msg, { poll = true } = {}) {
     void jumpToAgent(msg.id || "grok-bot");
     return;
   }
+  const row = overlayAsAgent(msg);
+  const key = overlayChipKey(msg);
+  if (row && dismissedChips.get(row.id) === key) return;
   overlay = { ...msg, at: Date.now() };
   ackedWaitKey = "";
   lastNudgeAt = Date.now();
@@ -779,22 +787,13 @@ async function pollDesk({ withCal = false } = {}) {
     }
     const rawAgents = (agentsSnap.agents || []).filter((a) => a.id !== "grok-bot");
     if (grokBot.status !== "idle") rawAgents.unshift(grokBot);
-    const overlayId = overlayAgentId(overlay?.tool);
+    const overlayRow = overlayAsAgent(overlay);
     if (
-      overlay &&
-      (overlay.status === "waiting" || overlay.status === "error") &&
-      !rawAgents.some((a) => a.id === overlayId && a.status === overlay.status)
+      overlayRow &&
+      shouldInjectOverlay(overlay, rawAgents) &&
+      dismissedChips.get(overlayRow.id) !== agentChipKey(overlayRow)
     ) {
-      rawAgents.unshift({
-        id: overlayId,
-        name: overlay.tool || "Grok Bot",
-        status: overlay.status,
-        label: overlay.status === "error" ? "error" : "needs you",
-        threads: 1,
-        cwd: overlay.name || "",
-        path: "",
-        processOn: true,
-      });
+      rawAgents.unshift(overlayRow);
     }
     const agents = latchAgents(rawAgents, now);
     const merged = {
@@ -1170,9 +1169,20 @@ ipcMain.on("pet-open-agent", (_e, id) => {
   }
 });
 ipcMain.on("pet-ack-agent", (_e, id) => {
-  const waiting = (lastDesk.agents || []).find((a) => a.id === id) || lastDesk.agents?.find((a) => a.status === "waiting");
-  if (waiting) ackedWaitKey = waitKey({ status: "waiting", tool: waiting.name, name: waiting.cwd });
-  else ackedWaitKey = waitKey(lastCodex);
+  const agent =
+    (lastDesk.agents || []).find((a) => a.id === id) ||
+    lastDesk.agents?.find((a) => a.status === "waiting") ||
+    overlayAsAgent(overlay);
+  if (agent) {
+    dismissedChips.set(agent.id, agentChipKey(agent));
+    if (agent.status === "waiting") {
+      ackedWaitKey = waitKey({ status: "waiting", tool: agent.name, name: agent.cwd });
+    }
+  } else ackedWaitKey = waitKey(lastCodex);
+  if (overlay && overlayAgentId(overlay.tool) === id) {
+    const row = overlayAsAgent(overlay);
+    if (!agent || (row && agentChipKey(row) === agentChipKey(agent))) overlay = null;
+  }
 });
 ipcMain.on("pet-open-perm", (_e, id) => {
   if (typeof id !== "string" || !id) return;

@@ -1,6 +1,6 @@
 "use strict";
 (() => {
-  // src/lib/grokbot/types.ts
+  // ../../workspace/src/lib/grokbot/types.ts
   var PATH_N = 64;
   var EYE_N = 48;
   var FACE_R = 100;
@@ -8,7 +8,7 @@
   var GAZE_GAIN_X = 22;
   var GAZE_GAIN_Y = 14;
 
-  // src/lib/grokbot/math.ts
+  // ../../workspace/src/lib/grokbot/math.ts
   function clamp(v, a, b) {
     return Math.max(a, Math.min(b, v));
   }
@@ -89,7 +89,7 @@
     return out;
   }
 
-  // src/lib/grokbot/expressions.ts
+  // ../../workspace/src/lib/grokbot/expressions.ts
   var e = (x, y, w, h, deg, round = 1, alpha = 1) => ({
     x,
     y,
@@ -256,7 +256,7 @@
     return EXPRESSIONS[(id % 25 + 25) % 25];
   }
 
-  // src/lib/grokbot/paths.ts
+  // ../../workspace/src/lib/grokbot/paths.ts
   function stadiumPath(eye, n = EYE_N) {
     const pts = [];
     const hw = Math.max(0.4, eye.w);
@@ -346,7 +346,7 @@
     return resampleClosed(raw, PATH_N);
   }
 
-  // src/lib/grokbot/shapes.ts
+  // ../../workspace/src/lib/grokbot/shapes.ts
   function bodyForShape(shape, time = 0) {
     switch (shape) {
       case "circle":
@@ -365,7 +365,7 @@
     }
   }
 
-  // src/lib/grokbot/demo.ts
+  // ../../workspace/src/lib/grokbot/demo.ts
   var DEMO_CUES = [
     {
       at: 0,
@@ -593,7 +593,7 @@
     }
   ];
 
-  // src/lib/grokbot/scenes.ts
+  // ../../workspace/src/lib/grokbot/scenes.ts
   var SCENES = {
     work: {
       label: "Work",
@@ -654,7 +654,7 @@
     return v === "work" || v === "companion" || v === "demo";
   }
 
-  // src/lib/grokbot/color.ts
+  // ../../workspace/src/lib/grokbot/color.ts
   var GROK_BLUE = "#1b56f3";
   var INK = "#161513";
   var FACE_PRESETS = [
@@ -899,7 +899,7 @@
     ctx2.stroke();
   }
 
-  // src/lib/grokbot/hysteresis.ts
+  // ../../workspace/src/lib/grokbot/hysteresis.ts
   var MOOD_RANK = {
     idle: 0,
     look: 1,
@@ -947,7 +947,7 @@
     };
   }
 
-  // src/lib/grokbot/engine.ts
+  // ../../workspace/src/lib/grokbot/engine.ts
   var BOUNCE_DIRS = [
     { x: 0, y: 1, faces: [5, 3, 20, 10] },
     { x: 0, y: -0.42, faces: [4, 6, 7, 15] },
@@ -1801,7 +1801,7 @@
     }
   };
 
-  // src/lib/grokbot/ribbons.ts
+  // ../../workspace/src/lib/grokbot/ribbons.ts
   function closestDistToSegment(ax, ay, bx, by, cx, cy) {
     const dx = bx - ax;
     const dy = by - ay;
@@ -1818,7 +1818,7 @@
     return !segmentHitsDisk(ax, ay, bx, by, clip.cx, clip.cy, clip.r + stroke * 0.55);
   }
 
-  // src/lib/grokbot/renderer.ts
+  // ../../workspace/src/lib/grokbot/renderer.ts
   function drawPupil(ctx2, eye, side, lookX, lookY, alpha) {
     const inboard = side === "left" ? 1 : -1;
     const gx = clamp(lookX, -1, 1);
@@ -2236,7 +2236,7 @@
     ctx2.restore();
   }
 
-  // src/lib/grokbot/sfx.ts
+  // ../../workspace/src/lib/grokbot/sfx.ts
   var MUTE_KEY = "grok-sfx-muted";
   var ctx = null;
   var muted = readMuted();
@@ -2302,7 +2302,7 @@
     }
   }
 
-  // src/lib/grokbot/sizes.ts
+  // ../../workspace/src/lib/grokbot/sizes.ts
   var BOT_SIZES = {
     menubar: { box: 22, faceScale: 0.46, label: "Menu bar" },
     pet: { box: 200, faceScale: 0.3, label: "Small" },
@@ -2311,14 +2311,14 @@
     hero: { box: 720, faceScale: 0.22, label: "Hero" }
   };
 
-  // src/lib/grokbot/registry.ts
+  // ../../workspace/src/lib/grokbot/registry.ts
   var stack = [];
   function registerEngine(engine) {
     if (engine) stack.push(engine);
     else stack.pop();
   }
 
-  // src/lib/grokbot/layout.ts
+  // ../../workspace/src/lib/grokbot/layout.ts
   var PET_SIZES = {
     s: { box: 200, faceScale: 0.3, label: "S", hint: "Small \xB7 200" },
     m: { box: 320, faceScale: 0.33, label: "M", hint: "Medium \xB7 320" },
@@ -2412,7 +2412,7 @@
     return m >= 9 * 60 && m < 18 * 60;
   }
 
-  // src/lib/grokbot/desk-core.js
+  // ../../workspace/src/lib/grokbot/desk-core.js
   var EMPTY_POMO = {
     running: false,
     phase: "idle",
@@ -2571,7 +2571,7 @@
     return { snap, toggle, skip, tick, begin };
   }
 
-  // src/lib/grokbot/pet-shell.ts
+  // ../../workspace/src/lib/grokbot/pet-shell.ts
   var HOLD_MS = 220;
   var TAP_MS = 280;
   var DBL_MS = 340;
@@ -2617,6 +2617,24 @@
     const nx = Math.max(-1, Math.min(1, (clientX - (r.left + r.width / 2)) / Math.max(72, r.width * 0.42)));
     const ny = Math.max(-1, Math.min(1, (clientY - (r.top + r.height / 2)) / Math.max(72, r.height * 0.42)));
     return { x: nx, y: ny };
+  }
+  function agentChipKey(agent) {
+    return `${agent.id || ""}:${agent.status || ""}:${agent.cwd || ""}`;
+  }
+  function isAgentChipDismissed(agent, dismissed) {
+    const id = agent.id || "";
+    const prev = dismissed instanceof Map ? dismissed.get(id) : dismissed[id];
+    return Boolean(prev) && prev === agentChipKey(agent);
+  }
+  function visibleAgentChips(agents, opts = {}) {
+    const watch = opts.watch !== false;
+    const dismissed = opts.dismissed;
+    return (agents || []).filter((a) => {
+      if (!a || a.status === "idle") return false;
+      if (dismissed && isAgentChipDismissed(a, dismissed)) return false;
+      if (watch) return true;
+      return a.status === "waiting" || a.status === "error";
+    });
   }
   function readFaceColor() {
     try {
@@ -2824,6 +2842,7 @@
   color: #fffcf6;
   font: 500 11px/1.35 "SF Pro Text", "Helvetica Neue", sans-serif;
   text-align: center;
+  cursor: pointer;
 }
 .grok-stage .whisper[hidden] { display: none; }
 .grok-stage .agents,
@@ -3068,14 +3087,22 @@
       whisperEl.textContent = text;
       whisperEl.hidden = false;
     }
+    function dismissAgentChip(agent) {
+      dismissedAgents.set(agent.id, agentChipKey(agent));
+      ackedWait = agentChipKey(agent);
+      if (pet) window.pet?.ackAgent?.(agent.id);
+      if (whisper && whisper.startsWith(agent.name)) {
+        whisper = "";
+        window.clearTimeout(whisperTimer);
+      }
+      paintAgents();
+      paintWhisper();
+      paintBrief();
+    }
     function paintAgents() {
       if (!agentsEl) return;
       agentsEl.replaceChildren();
-      const list = desk.agents.filter((a) => {
-        if (a.status === "idle") return false;
-        if (watchCodex) return true;
-        return a.status === "waiting" || a.status === "error";
-      });
+      const list = visibleAgentChips(desk.agents, { watch: watchCodex, dismissed: dismissedAgents });
       if (!list.length) {
         agentsEl.hidden = true;
         return;
@@ -3088,13 +3115,11 @@
         const klass = agent.status === "waiting" ? "wait" : agent.status === "error" ? "err" : agent.status === "done" ? "done" : "";
         if (klass) b.classList.add(klass);
         b.textContent = agent.cwd ? `${agent.name} \xB7 ${agent.cwd}` : `${agent.name} \xB7 ${agent.label}`;
-        b.title = "Open this tool";
-        b.addEventListener("click", () => {
-          ackedWait = `${agent.id}:${agent.status}:${agent.cwd}`;
-          if (pet) {
-            window.pet?.ackAgent?.(agent.id);
-            window.pet?.openAgent?.(agent.id);
-          } else showWhisper(`Would open ${agent.name} on your Mac`);
+        b.title = "Hide this";
+        b.addEventListener("click", (e2) => {
+          e2.preventDefault();
+          e2.stopPropagation();
+          dismissAgentChip(agent);
         });
         agentsEl.appendChild(b);
       }
@@ -3341,6 +3366,7 @@
     let whisper = "";
     let whisperTimer = 0;
     let ackedWait = "";
+    const dismissedAgents = /* @__PURE__ */ new Map();
     let nudgeTimer = 0;
     let briefing = false;
     let sceneBeforeAuto = null;
@@ -3475,6 +3501,15 @@
       }
     });
     const offNudge = window.pet?.onNudge?.(() => playNudge());
+    whisperEl?.addEventListener("click", (e2) => {
+      e2.preventDefault();
+      e2.stopPropagation();
+      if (!whisper && !(dockOpen && desk.digest && desk.digest !== "All quiet.")) return;
+      whisper = "";
+      window.clearTimeout(whisperTimer);
+      paintWhisper();
+      paintBrief();
+    });
     if (pet) {
       wrap.addEventListener("pointerenter", onFaceEnter);
       wrap.addEventListener("pointerleave", onFaceLeave);
@@ -3675,7 +3710,7 @@
       const codexBtn = document.createElement("button");
       codexBtn.type = "button";
       codexBtn.dataset.pref = "codex";
-      codexBtn.title = "Watch local Codex, Claude, Cursor, Gemini, and other agents";
+      codexBtn.title = "Show working agent chips. Off hides Codex, Cursor, and Grok Bot working pills.";
       codexBtn.classList.add("dim");
       codexBtn.addEventListener("click", () => {
         watchCodex = !watchCodex;
@@ -3989,6 +4024,6 @@
     };
   }
 
-  // mac/companion.ts
+  // ../../workspace/mac/companion.ts
   bootMacCompanion();
 })();

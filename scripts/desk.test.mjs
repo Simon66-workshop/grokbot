@@ -11,10 +11,26 @@ import {
 } from "../electron/desk-core.mjs";
 import { parseMeetingOut, buildDesk } from "../electron/desk.mjs";
 import { notifyCopy } from "../electron/codex.mjs";
-import { grokBotWaitingFromWindows, isGrokBotProcess } from "../electron/grok-bot-app.mjs";
+import { grokBotWaitingFromWindows, isGrokBotProcess, isGrokBotSessionFile } from "../electron/grok-bot-app.mjs";
 import { classifyPermOut, parsePermProbe, probePerms, resolvePerms, unwrapPermCmd } from "../electron/perms.mjs";
 import { readFileSync } from "node:fs";
-import { bannersQuiet, nextNudge, overlayAgentId, overlayWhisper, parseInbox, parseMacScene, parseNudgeUrl, waitKey } from "../electron/nudge.mjs";
+import {
+  agentChipKey,
+  bannersQuiet,
+  isAgentChipDismissed,
+  nextNudge,
+  overlayAgentId,
+  overlayAsAgent,
+  overlayChipKey,
+  overlayWhisper,
+  parseInbox,
+  parseMacScene,
+  parseNudgeUrl,
+  rememberAgentDismiss,
+  shouldInjectOverlay,
+  visibleAgentChips,
+  waitKey,
+} from "../electron/nudge.mjs";
 import { PET_SIZES, dockMainFor } from "../electron/layout.mjs";
 import { AGENT_RANK, createGate, createLatch, inWorkHoursHyst, soonHyst, stampMeeting, tickMeeting } from "../electron/hysteresis.mjs";
 
@@ -260,6 +276,78 @@ test("control dock never auto-opens from waiting or whisper", () => {
   assert.equal(bundled.includes("showDock(true)"), false);
   assert.match(shell, /:not\(\.open\) #actions/);
   assert.match(bundled, /:not\(\.open\) #actions/);
+});
+
+test("agent chip click dismisses and does not open dock or agent", () => {
+  const shell = readFileSync(new URL("../src/lib/grokbot/pet-shell.ts", import.meta.url), "utf8");
+  const bundled = readFileSync(new URL("../mac/grokbot.js", import.meta.url), "utf8");
+  const paint = shell.slice(shell.indexOf("function paintAgents"), shell.indexOf("function paintDeskChips"));
+  const paintJs = bundled.slice(bundled.indexOf("function paintAgents"), bundled.indexOf("function paintDeskChips"));
+  assert.match(paint, /visibleAgentChips/);
+  assert.match(paint, /dismissAgentChip/);
+  assert.equal(paint.includes("openAgent"), false);
+  assert.equal(paint.includes("showDock"), false);
+  assert.match(paintJs, /visibleAgentChips|dismissAgentChip/);
+  assert.equal(paintJs.includes("openAgent"), false);
+  assert.equal(paintJs.includes("showDock"), false);
+  assert.equal(shell.includes("showDock(true)"), false);
+  assert.equal(bundled.includes("showDock(true)"), false);
+});
+
+test("dismissed working chips stay hidden until status or session changes", () => {
+  const grok = { id: "grok-bot", status: "running", cwd: "", name: "Grok Bot" };
+  const codex = { id: "codex", status: "running", cwd: "new-chat", name: "Codex" };
+  const cursor = { id: "cursor", status: "running", cwd: "", name: "Cursor" };
+  const dismissed = new Map();
+  rememberAgentDismiss(dismissed, grok);
+  rememberAgentDismiss(dismissed, codex);
+  rememberAgentDismiss(dismissed, cursor);
+  const sameTick = visibleAgentChips([grok, codex, cursor], { watch: true, dismissed });
+  assert.deepEqual(sameTick, []);
+  assert.equal(isAgentChipDismissed(grok, dismissed), true);
+  const quietSame = visibleAgentChips(
+    [
+      { ...grok },
+      { ...codex },
+      { ...cursor, status: "running", cwd: "" },
+    ],
+    { watch: true, dismissed },
+  );
+  assert.equal(quietSame.length, 0);
+  const waiting = visibleAgentChips([{ ...grok, status: "waiting" }], { watch: true, dismissed });
+  assert.equal(waiting.length, 1);
+  const newSession = visibleAgentChips([{ ...codex, cwd: "remind" }], { watch: true, dismissed });
+  assert.equal(newSession.length, 1);
+  const error = visibleAgentChips([{ ...cursor, status: "error" }], { watch: true, dismissed });
+  assert.equal(error.length, 1);
+});
+
+test("Agents Watch off hides working chips without a new settings page", () => {
+  const agents = [
+    { id: "grok-bot", status: "running", cwd: "" },
+    { id: "codex", status: "running", cwd: "new-chat" },
+    { id: "cursor", status: "waiting", cwd: "" },
+  ];
+  assert.equal(visibleAgentChips(agents, { watch: true }).length, 3);
+  const hidden = visibleAgentChips(agents, { watch: false });
+  assert.equal(hidden.length, 1);
+  assert.equal(hidden[0].id, "cursor");
+});
+
+test("leftover inbox running is one dismissable overlay input", () => {
+  const msg = parseInbox('{"status":"running","tool":"Grok Bot"}');
+  assert.equal(msg.status, "running");
+  const row = overlayAsAgent(msg);
+  assert.equal(row.id, "grok-bot");
+  assert.equal(row.status, "running");
+  assert.equal(row.label, "working");
+  assert.equal(overlayChipKey(msg), agentChipKey(row));
+  assert.equal(shouldInjectOverlay(msg, []), true);
+  assert.equal(shouldInjectOverlay(msg, [row]), false);
+  const dismissed = rememberAgentDismiss({}, row);
+  assert.equal(visibleAgentChips([row], { watch: true, dismissed }).length, 0);
+  assert.equal(isGrokBotSessionFile("inbox.json"), false);
+  assert.equal(isGrokBotSessionFile("session.json"), true);
 });
 
 test("dockMain keeps chips below the body disk", () => {

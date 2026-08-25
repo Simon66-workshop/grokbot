@@ -7,7 +7,13 @@ export const GROK_BOT_APP = "Grok Bot";
 const WAIT_WIN =
   /allow once|always allow|approve|approval|take control|needs you|waiting for you|review this|confirm|takeover/i;
 
-const SKIP_FILE = /^(auth|settings|config|credentials|token|secret|keystore|lock)/i;
+const SKIP_FILE = /^(auth|settings|config|credentials|token|secret|keystore|lock|inbox|pet-pos|pet-prefs|nudge)/i;
+
+export function isGrokBotSessionFile(name) {
+  const base = String(name || "").split(/[\\/]/).pop() || "";
+  if (SKIP_FILE.test(base)) return false;
+  return base.endsWith(".json") || base.endsWith(".jsonl");
+}
 
 export function isGrokBotProcess(line) {
   const n = String(line || "").toLowerCase();
@@ -41,7 +47,7 @@ function walkJson(dir, out = [], depth = 0) {
   for (const ent of ents) {
     const p = path.join(dir, ent.name);
     if (ent.isDirectory()) walkJson(p, out, depth + 1);
-    else if (ent.isFile() && !SKIP_FILE.test(ent.name) && (ent.name.endsWith(".json") || ent.name.endsWith(".jsonl"))) {
+    else if (ent.isFile() && isGrokBotSessionFile(ent.name)) {
       out.push(p);
     }
   }

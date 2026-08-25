@@ -95,6 +95,33 @@ export function gazeFromRect(
   return { x: nx, y: ny };
 }
 
+export function agentChipKey(agent: { id?: string; status?: string; cwd?: string }) {
+  return `${agent.id || ""}:${agent.status || ""}:${agent.cwd || ""}`;
+}
+
+export function isAgentChipDismissed(
+  agent: { id?: string; status?: string; cwd?: string },
+  dismissed: Map<string, string> | Record<string, string>,
+) {
+  const id = agent.id || "";
+  const prev = dismissed instanceof Map ? dismissed.get(id) : dismissed[id];
+  return Boolean(prev) && prev === agentChipKey(agent);
+}
+
+export function visibleAgentChips<T extends { id: string; status: string; cwd?: string }>(
+  agents: T[],
+  opts: { watch?: boolean; dismissed?: Map<string, string> | Record<string, string> } = {},
+) {
+  const watch = opts.watch !== false;
+  const dismissed = opts.dismissed;
+  return (agents || []).filter((a) => {
+    if (!a || a.status === "idle") return false;
+    if (dismissed && isAgentChipDismissed(a, dismissed)) return false;
+    if (watch) return true;
+    return a.status === "waiting" || a.status === "error";
+  });
+}
+
 export function readFaceColor() {
   try {
     return localStorage.getItem(COLOR_KEY) || GROK_BLUE;
@@ -318,6 +345,7 @@ const PET_CSS = `
   color: #fffcf6;
   font: 500 11px/1.35 "SF Pro Text", "Helvetica Neue", sans-serif;
   text-align: center;
+  cursor: pointer;
 }
 .grok-stage .whisper[hidden] { display: none; }
 .grok-stage .agents,
@@ -594,14 +622,23 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     whisperEl.hidden = false;
   }
 
+  function dismissAgentChip(agent: DeskSnap["agents"][number]) {
+    dismissedAgents.set(agent.id, agentChipKey(agent));
+    ackedWait = agentChipKey(agent);
+    if (pet) window.pet?.ackAgent?.(agent.id);
+    if (whisper && whisper.startsWith(agent.name)) {
+      whisper = "";
+      window.clearTimeout(whisperTimer);
+    }
+    paintAgents();
+    paintWhisper();
+    paintBrief();
+  }
+
   function paintAgents() {
     if (!agentsEl) return;
     agentsEl.replaceChildren();
-    const list = desk.agents.filter((a) => {
-      if (a.status === "idle") return false;
-      if (watchCodex) return true;
-      return a.status === "waiting" || a.status === "error";
-    });
+    const list = visibleAgentChips(desk.agents, { watch: watchCodex, dismissed: dismissedAgents });
     if (!list.length) {
       agentsEl.hidden = true;
       return;
@@ -614,13 +651,11 @@ export function bootMacCompanion(opts: BootOptions = {}) {
       const klass = agent.status === "waiting" ? "wait" : agent.status === "error" ? "err" : agent.status === "done" ? "done" : "";
       if (klass) b.classList.add(klass);
       b.textContent = agent.cwd ? `${agent.name} · ${agent.cwd}` : `${agent.name} · ${agent.label}`;
-      b.title = "Open this tool";
-      b.addEventListener("click", () => {
-        ackedWait = `${agent.id}:${agent.status}:${agent.cwd}`;
-        if (pet) {
-          window.pet?.ackAgent?.(agent.id);
-          window.pet?.openAgent?.(agent.id);
-        } else showWhisper(`Would open ${agent.name} on your Mac`);
+      b.title = "Hide this";
+      b.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dismissAgentChip(agent);
       });
       agentsEl.appendChild(b);
     }
@@ -887,6 +922,7 @@ export function bootMacCompanion(opts: BootOptions = {}) {
   let whisper = "";
   let whisperTimer = 0;
   let ackedWait = "";
+  const dismissedAgents = new Map<string, string>();
   let nudgeTimer = 0;
   let briefing = false;
   let sceneBeforeAuto: SceneId | null = null;
@@ -1030,6 +1066,16 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     }
   });
   const offNudge = window.pet?.onNudge?.(() => playNudge());
+
+  whisperEl?.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!whisper && !(dockOpen && desk.digest && desk.digest !== "All quiet.")) return;
+    whisper = "";
+    window.clearTimeout(whisperTimer);
+    paintWhisper();
+    paintBrief();
+  });
 
   if (pet) {
     wrap.addEventListener("pointerenter", onFaceEnter);
@@ -1247,7 +1293,7 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     const codexBtn = document.createElement("button");
     codexBtn.type = "button";
     codexBtn.dataset.pref = "codex";
-    codexBtn.title = "Watch local Codex, Claude, Cursor, Gemini, and other agents";
+    codexBtn.title = "Show working agent chips. Off hides Codex, Cursor, and Grok Bot working pills.";
     codexBtn.classList.add("dim");
     codexBtn.addEventListener("click", () => {
       watchCodex = !watchCodex;

@@ -64,6 +64,83 @@ export function overlayWhisper(msg = {}) {
   return msg.name ? `${tool} · ${msg.name}` : `${tool} · ${msg.status || "waiting"}`;
 }
 
+export function agentChipKey(agent = {}) {
+  return `${agent.id || ""}:${agent.status || ""}:${agent.cwd || ""}`;
+}
+
+export function overlayChipKey(msg = {}) {
+  return agentChipKey({
+    id: overlayAgentId(msg.tool),
+    status: msg.status,
+    cwd: msg.name || "",
+  });
+}
+
+export function overlayStatusLabel(status) {
+  if (status === "error") return "error";
+  if (status === "waiting") return "needs you";
+  if (status === "done") return "done";
+  return "working";
+}
+
+export function overlayAsAgent(overlay) {
+  if (!overlay || overlay.status === "idle") return null;
+  const status = overlay.status || "waiting";
+  return {
+    id: overlayAgentId(overlay.tool),
+    name: overlay.tool || "Grok Bot",
+    status,
+    label: overlayStatusLabel(status),
+    threads: 1,
+    cwd: overlay.name || "",
+    path: "",
+    processOn: true,
+  };
+}
+
+export function shouldInjectOverlay(overlay, agents = []) {
+  const row = overlayAsAgent(overlay);
+  if (!row) return false;
+  return !(agents || []).some((a) => a.id === row.id && a.status === row.status);
+}
+
+function dismissedKeyFor(dismissed, id) {
+  if (!dismissed) return "";
+  if (typeof dismissed.get === "function") return dismissed.get(id) || "";
+  return dismissed[id] || "";
+}
+
+export function isAgentChipDismissed(agent, dismissed) {
+  if (!agent) return false;
+  const prev = dismissedKeyFor(dismissed, agent.id);
+  return Boolean(prev) && prev === agentChipKey(agent);
+}
+
+export function visibleAgentChips(agents = [], { watch = true, dismissed } = {}) {
+  return (agents || []).filter((a) => {
+    if (!a || a.status === "idle") return false;
+    if (isAgentChipDismissed(a, dismissed)) return false;
+    if (watch) return true;
+    return a.status === "waiting" || a.status === "error";
+  });
+}
+
+export function rememberAgentDismiss(dismissed, agent) {
+  const key = agentChipKey(agent);
+  if (dismissed instanceof Map) {
+    dismissed.set(agent.id, key);
+    return dismissed;
+  }
+  const next = { ...(dismissed || {}) };
+  next[agent.id] = key;
+  return next;
+}
+
+export function sameChipSnapshot(a, b) {
+  if (!a || !b) return false;
+  return agentChipKey(a) === agentChipKey(b);
+}
+
 export function parseInbox(raw) {
   try {
     const row = typeof raw === "string" ? JSON.parse(raw) : raw;
