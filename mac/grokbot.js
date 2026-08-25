@@ -745,22 +745,29 @@
     play: 0.5,
     sleep: 0.62
   };
-  function lerpHue(a, b, t) {
-    const d = (b - a + 540) % 360 - 180;
-    return (a + d * t + 360) % 360;
-  }
-  function mixHsv(a, b, t) {
+  function mixRgb(a, b, t) {
     const u = Math.max(0, Math.min(1, t));
     return {
-      h: lerpHue(a.h, b.h, u),
-      s: a.s + (b.s - a.s) * u,
-      v: a.v + (b.v - a.v) * u
+      r: a.r + (b.r - a.r) * u,
+      g: a.g + (b.g - a.g) * u,
+      b: a.b + (b.b - a.b) * u
     };
   }
+  function mixHex(a, b, t) {
+    const c = mixRgb(hexToRgb(a), hexToRgb(b), t);
+    return rgbToHex(c.r, c.g, c.b);
+  }
+  var MOOD_TINT_MAX = 0.28;
   function moodTint(homeHex, moodHex, amount) {
     const home = hexToHsv(homeHex);
     if (!moodHex || amount <= 0) return home;
-    return mixHsv(home, hexToHsv(moodHex), amount);
+    const t = Math.min(Math.max(amount, 0), MOOD_TINT_MAX);
+    return hexToHsv(mixHex(homeHex, moodHex, t));
+  }
+  function faceFillHsv(faceColor, mood, state = "idle", expression = 0) {
+    const home = resolveFaceHex(faceColor);
+    const blend = moodBlend(mood, state, expression);
+    return moodTint(home, blend.hex, blend.amount);
   }
   var MOOD_FACE = {
     idle: 0,
@@ -1220,6 +1227,7 @@
     }
     setFaceColor(c) {
       this.faceColor = c;
+      this.snapDisplayColor();
     }
     setMood(id) {
       const held = this.moodHold.sample(id, this.elapsed * 1e3);
@@ -1570,10 +1578,14 @@
         this.trail.shift();
       }
     }
+    snapDisplayColor() {
+      const target = faceFillHsv(this.faceColor, this.mood, this.state, this.expression);
+      this.shownH = target.h;
+      this.shownS = target.s;
+      this.shownV = target.v;
+    }
     tickColor(dt) {
-      const home = resolveFaceHex(this.faceColor);
-      const blend = moodBlend(this.mood, this.state, this.expression);
-      const target = moodTint(home, blend.hex, blend.amount);
+      const target = faceFillHsv(this.faceColor, this.mood, this.state, this.expression);
       const k = 1 - Math.exp(-dt * (this.state === "bounce" ? 4.2 : 2.6));
       this.shownH = (this.shownH + ((target.h - this.shownH + 540) % 360 - 180) * k + 360) % 360;
       this.shownS += (target.s - this.shownS) * k;

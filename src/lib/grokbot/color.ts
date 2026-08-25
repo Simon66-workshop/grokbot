@@ -136,10 +136,35 @@ export function mixHsv(a: Hsv, b: Hsv, t: number): Hsv {
   };
 }
 
+/** Mood may shade the home color, but must not walk the hue wheel through magenta. */
+export const MOOD_TINT_MAX = 0.28;
+
 export function moodTint(homeHex: string, moodHex: string | null, amount: number): Hsv {
   const home = hexToHsv(homeHex);
   if (!moodHex || amount <= 0) return home;
-  return mixHsv(home, hexToHsv(moodHex), amount);
+  const t = Math.min(Math.max(amount, 0), MOOD_TINT_MAX);
+  return hexToHsv(mixHex(homeHex, moodHex, t));
+}
+
+export function faceFillHsv(
+  faceColor: string,
+  mood: MoodId,
+  state = "idle",
+  expression = 0,
+): Hsv {
+  const home = resolveFaceHex(faceColor);
+  const blend = moodBlend(mood, state, expression);
+  return moodTint(home, blend.hex, blend.amount);
+}
+
+export function faceFillHex(
+  faceColor: string,
+  mood: MoodId,
+  state = "idle",
+  expression = 0,
+): string {
+  const hsv = faceFillHsv(faceColor, mood, state, expression);
+  return hsvToHex(hsv.h, hsv.s, hsv.v);
 }
 
 export const MOOD_FACE: Record<MoodId, number> = {

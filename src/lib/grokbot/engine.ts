@@ -17,7 +17,7 @@ import { bodyForShape } from "./shapes";
 import { exclaimStem, stadiumPath } from "./paths";
 import { DEMO_CUES } from "./demo";
 import { SCENES, writeScene, type SceneId } from "./scenes";
-import { canEnterState, hsvToHex, moodBlend, moodTint, resolveFaceHex, MOOD_FACE, type MoodId } from "./color";
+import { canEnterState, faceFillHsv, hsvToHex, MOOD_FACE, type MoodId } from "./color";
 import { createLatch, MOOD_RANK } from "./hysteresis";
 
 type BounceCue = {
@@ -384,6 +384,7 @@ export class GrokBotEngine {
 
   setFaceColor(c: FaceColor) {
     this.faceColor = c;
+    this.snapDisplayColor();
   }
 
   setMood(id: MoodId) {
@@ -762,10 +763,15 @@ export class GrokBotEngine {
     }
   }
 
+  private snapDisplayColor() {
+    const target = faceFillHsv(this.faceColor, this.mood, this.state, this.expression);
+    this.shownH = target.h;
+    this.shownS = target.s;
+    this.shownV = target.v;
+  }
+
   private tickColor(dt: number) {
-    const home = resolveFaceHex(this.faceColor);
-    const blend = moodBlend(this.mood, this.state, this.expression);
-    const target = moodTint(home, blend.hex, blend.amount);
+    const target = faceFillHsv(this.faceColor, this.mood, this.state, this.expression);
     const k = 1 - Math.exp(-dt * (this.state === "bounce" ? 4.2 : 2.6));
     this.shownH = ((this.shownH + (((target.h - this.shownH + 540) % 360) - 180) * k) + 360) % 360;
     this.shownS += (target.s - this.shownS) * k;
