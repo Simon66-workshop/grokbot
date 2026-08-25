@@ -8,7 +8,7 @@
   "type": "module",
   "overrides": {
     "nf3": "0.3.17",
-    "esbuild": "^0.27.0"
+    "esbuild": "$esbuild"
   },
   "scripts": {
     "dev": "vite dev --host 0.0.0.0 --port 8080",

@@ -58,6 +58,7 @@ interface PetBridge {
   onDragFinished?: (fn: (result: PetDragResult) => void) => () => void;
   setClickThrough?: (on: boolean) => void;
   setDock?: (open: boolean) => void;
+  setOverlay?: (on: boolean) => void;
   onCursor?: (fn: (x: number, y: number) => void) => () => void;
   onSide?: (fn: (side: string) => void) => () => void;
   onScene?: (fn: (scene: string) => void) => () => void;

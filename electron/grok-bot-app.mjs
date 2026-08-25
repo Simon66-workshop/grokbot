@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { chatClientSupportRoots } from "./pet-paths.mjs";
 
 export const GROK_BOT_APP = "Grok Bot";
 
@@ -22,12 +23,7 @@ export function grokBotWaitingFromWindows(text) {
 }
 
 export function grokBotSupportRoots(home = os.homedir()) {
-  return [
-    path.join(home, "Library", "Application Support", "Grok Bot"),
-    path.join(home, "Library", "Application Support", "GrokBot"),
-    path.join(home, "Library", "Application Support", "ai.x.grok-bot"),
-    path.join(home, "Library", "Logs", "Grok Bot"),
-  ];
+  return chatClientSupportRoots(home);
 }
 
 function walkJson(dir, out = [], depth = 0) {

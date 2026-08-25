@@ -23,10 +23,24 @@ import {
   waitKey,
 } from "./nudge.mjs";
 import { AGENT_RANK, createGate, createLatch, soonHyst, stampMeeting, tickMeeting } from "./hysteresis.mjs";
+import { applyPetUserData, companionIndex, petDataFile } from "./pet-paths.mjs";
+import {
+  BTN_POLL_MS,
+  CURSOR_TICK_MS,
+  DRAG_ARM_PX,
+  DRAG_TICK_MS,
+  ballRadius,
+  cursorOverBall,
+  dragWasMove,
+  packagedChromiumSwitches,
+  shouldArmDrag,
+  shouldIgnoreMouse,
+} from "./pet-input.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const POS_FILE = path.join(app.getPath("userData"), "pet-pos.json");
-const PREFS_FILE = path.join(app.getPath("userData"), "pet-prefs.json");
+applyPetUserData(app);
+const POS_FILE = petDataFile(app, "pet-pos.json");
+const PREFS_FILE = petDataFile(app, "pet-prefs.json");
 
 let win = null;
 let tray = null;
@@ -43,8 +57,11 @@ let meeting = false;
 let petSize = "l";
 let layout = layoutFor("l");
 let lastIconAt = 0;
-const DRAG_ARM_PX = 6;
 let drag = null;
+let dockOpen = false;
+let overlayOn = false;
+let rendererWantsClicks = false;
+let lastIgnore = null;
 let codexTimer = null;
 let lastCodex = { status: "idle", label: "idle", name: "", threads: 0, processOn: false, tool: "", agents: [] };
 let lastCodexNote = { status: "idle", at: 0 };
@@ -212,6 +229,22 @@ function readLeftButton() {
   });
 }
 
+function applyClickThrough() {
+  if (!win || win.isDestroyed()) return;
+  const overBall = cursorOverBall(screen.getCursorScreenPoint(), ballScreen(), ballRadius(layout.box, layout.faceScale));
+  const ignore = shouldIgnoreMouse({
+    dragging: Boolean(drag),
+    dockOpen,
+    overlayOn,
+    overBall,
+    rendererWantsClicks,
+  });
+  if (ignore === lastIgnore) return;
+  lastIgnore = ignore;
+  if (ignore) win.setIgnoreMouseEvents(true, { forward: true });
+  else win.setIgnoreMouseEvents(false);
+}
+
 function startDrag() {
   if (!win) return;
   const cursor = screen.getCursorScreenPoint();
@@ -228,8 +261,9 @@ function startDrag() {
     outsideSince: 0,
     lastBtnCheck: 0,
   };
-  win.setIgnoreMouseEvents(false);
-  drag.timer = setInterval(followDrag, 10);
+  lastIgnore = null;
+  applyClickThrough();
+  drag.timer = setInterval(followDrag, DRAG_TICK_MS);
   followDrag();
 }
 
@@ -237,9 +271,23 @@ function followDrag() {
   if (!drag || !win || win.isDestroyed()) return;
   const cursor = screen.getCursorScreenPoint();
   const travel = Math.hypot(cursor.x - drag.startX, cursor.y - drag.startY);
-  if (!drag.armed && travel < DRAG_ARM_PX) return;
+  const now = Date.now();
+  if (now - drag.lastBtnCheck > BTN_POLL_MS) {
+    drag.lastBtnCheck = now;
+    readLeftButton().then((down) => {
+      if (drag && down === false) forceEndDrag();
+    });
+  }
+  if (!drag.armed && !shouldArmDrag(travel, DRAG_ARM_PX)) {
+    if (cursorInWindow()) drag.outsideSince = 0;
+    else if (!drag.outsideSince) drag.outsideSince = now;
+    if (drag.outsideSince && now - drag.outsideSince > 8000) forceEndDrag();
+    return;
+  }
   if (!drag.armed) {
     drag.armed = true;
+    lastIgnore = null;
+    applyClickThrough();
     win.webContents.send("pet-drag-armed");
   }
   const next = { x: cursor.x - drag.ox, y: cursor.y - drag.oy };
@@ -251,27 +299,24 @@ function followDrag() {
     drag.outsideSince = 0;
     return;
   }
-  const now = Date.now();
   if (!drag.outsideSince) drag.outsideSince = now;
-  if (now - drag.lastBtnCheck > 180) {
-    drag.lastBtnCheck = now;
-    readLeftButton().then((down) => {
-      if (drag && down === false) forceEndDrag();
-    });
-  }
   if (now - drag.outsideSince > 8000) forceEndDrag();
 }
 
 function endDrag() {
   if (!drag) return { moved: false };
-  const moved = drag.armed;
+  const cursor = screen.getCursorScreenPoint();
+  const travel = Math.hypot(cursor.x - drag.startX, cursor.y - drag.startY);
+  const moved = dragWasMove({ armed: drag.armed, travel, armPx: DRAG_ARM_PX });
   if (drag.timer) clearInterval(drag.timer);
   drag = null;
+  lastIgnore = null;
   if (win && !win.isDestroyed()) {
     const b = ballScreen();
     const a = workAreaAt(b.x, b.y);
     placeWindow(b.x, b.y, pickSide(b.x, b.y, a));
     savePos();
+    applyClickThrough();
   }
   return { moved };
 }
@@ -512,7 +557,8 @@ function startCursor() {
     const nx = Math.max(-1, Math.min(1, (p.x - b.x) / 260));
     const ny = Math.max(-1, Math.min(1, (p.y - b.y) / 200));
     win.webContents.send("pet-cursor", nx, ny);
-  }, 32);
+    applyClickThrough();
+  }, CURSOR_TICK_MS);
 }
 
 function stopCursor() {
@@ -620,7 +666,7 @@ function showNote(title, body, onClick) {
 }
 
 function inboxPath() {
-  return path.join(app.getPath("userData"), "inbox.json");
+  return petDataFile(app, "inbox.json");
 }
 
 function applyExternalNudge(msg, { poll = true } = {}) {
@@ -652,7 +698,7 @@ function readInbox() {
 function installNudgeHook() {
   const src = path.join(here, "../mac/nudge-grokbot.sh");
   try {
-    const dest = path.join(app.getPath("userData"), "nudge-grokbot.sh");
+    const dest = petDataFile(app, "nudge-grokbot.sh");
     fs.copyFileSync(src, dest);
     fs.chmodSync(dest, 0o755);
   } catch {
@@ -736,6 +782,7 @@ async function jumpToAgent(id) {
 }
 
 async function pollDesk({ withCal = false } = {}) {
+  if (drag) return;
   try {
     pollTick += 1;
     const now = Date.now();
@@ -1074,8 +1121,9 @@ function create() {
     win.setWindowButtonVisibility(false);
     win.setHiddenInMissionControl(true);
   }
-  win.setIgnoreMouseEvents(true, { forward: true });
-  win.loadFile(path.join(here, "../mac/index.html"), { query: { pet: "1" } });
+  lastIgnore = null;
+  applyClickThrough();
+  win.loadFile(companionIndex(here), { query: { pet: "1" } });
   win.webContents.on("did-finish-load", () => {
     win.webContents.send("pet-side", side);
     win.webContents.send("pet-visible", visible);
@@ -1120,11 +1168,19 @@ ipcMain.on("pet-move-by", (event, dx, dy) => {
 ipcMain.on("pet-drag-start", () => startDrag());
 ipcMain.handle("pet-drag-end", () => endDrag());
 
-ipcMain.on("pet-click-through", (event, ignore) => {
-  if (drag) return;
-  const w = BrowserWindow.fromWebContents(event.sender);
-  if (!w) return;
-  w.setIgnoreMouseEvents(Boolean(ignore), { forward: true });
+ipcMain.on("pet-click-through", (_event, ignore) => {
+  rendererWantsClicks = !Boolean(ignore);
+  applyClickThrough();
+});
+
+ipcMain.on("pet-dock", (_event, open) => {
+  dockOpen = Boolean(open);
+  applyClickThrough();
+});
+
+ipcMain.on("pet-overlay", (_event, on) => {
+  overlayOn = Boolean(on);
+  applyClickThrough();
 });
 
 ipcMain.on("pet-set-scene", (_e, next) => {
@@ -1218,6 +1274,10 @@ ipcMain.on("pet-tray-icon", (_e, dataUrl) => {
 
 if (process.platform !== "darwin") {
   app.commandLine.appendSwitch("enable-transparent-visuals");
+}
+
+if (app.isPackaged) {
+  for (const flag of packagedChromiumSwitches()) app.commandLine.appendSwitch(flag);
 }
 
 if (process.defaultApp) {
