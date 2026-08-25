@@ -14,10 +14,19 @@ import { openPerm, probePerms, resolvePerms } from "./perms.mjs";
 import {
   NUDGE_MS,
   OVERLAY_MS,
+  agentChipKey,
+  ballHitRadius,
   bannersQuiet,
+  isNearBall,
   nextNudge,
+  overlayAgentId,
+  overlayAsAgent,
+  overlayChipKey,
+  overlayWhisper,
   parseInbox,
   parseNudgeUrl,
+  shouldClickThrough,
+  shouldInjectOverlay,
   waitKey,
 } from "./nudge.mjs";
 import { AGENT_RANK, createGate, createLatch, soonHyst, stampMeeting, tickMeeting } from "./hysteresis.mjs";
@@ -66,6 +75,8 @@ let cachedPerms = { at: 0, value: EMPTY_DESK.perms };
 let dismissedPerms = new Set();
 let cachedGit = { at: 0, key: "", value: [] };
 let lastInboxMtime = 0;
+const dismissedChips = new Map();
+let rendererLive = false;
 const meetingGate = createGate({ enterMs: 0, exitMs: 16_000 });
 const focusGate = createGate({ enterMs: 8_000, exitMs: 16_000 });
 const quietGate = createGate({ enterMs: 0, exitMs: 15_000 });
@@ -227,6 +238,7 @@ function startDrag() {
     lastBtnCheck: 0,
   };
   win.setIgnoreMouseEvents(false);
+  applyClickThrough();
   drag.timer = setInterval(followDrag, 10);
   followDrag();
 }
@@ -271,6 +283,7 @@ function endDrag() {
     placeWindow(b.x, b.y, pickSide(b.x, b.y, a));
     savePos();
   }
+  applyClickThrough();
   return { moved };
 }
 
@@ -284,6 +297,22 @@ function ballScreen() {
   const [wx, wy] = win.getPosition();
   const o = layout.ball[side];
   return { x: wx + o.x, y: wy + o.y };
+}
+
+function cursorNearBall() {
+  if (!win || win.isDestroyed()) return false;
+  const p = screen.getCursorScreenPoint();
+  return isNearBall(p.x, p.y, ballScreen(), ballHitRadius(layout.box, layout.faceScale));
+}
+
+function applyClickThrough() {
+  if (!win || win.isDestroyed()) return;
+  const ignore = shouldClickThrough({
+    drag: Boolean(drag),
+    nearBall: cursorNearBall(),
+    rendererLive,
+  });
+  win.setIgnoreMouseEvents(ignore, { forward: true });
 }
 
 function applySize(id) {
@@ -510,6 +539,7 @@ function startCursor() {
     const nx = Math.max(-1, Math.min(1, (p.x - b.x) / 260));
     const ny = Math.max(-1, Math.min(1, (p.y - b.y) / 200));
     win.webContents.send("pet-cursor", nx, ny);
+    applyClickThrough();
   }, 32);
 }
 
@@ -627,9 +657,13 @@ function applyExternalNudge(msg, { poll = true } = {}) {
     void jumpToAgent(msg.id || "grok-bot");
     return;
   }
+  const row = overlayAsAgent(msg);
+  const key = overlayChipKey(msg);
+  if (row && dismissedChips.get(row.id) === key) return;
   overlay = { ...msg, at: Date.now() };
   ackedWaitKey = "";
   lastNudgeAt = Date.now();
+  win?.webContents.send("pet-whisper", overlayWhisper(msg));
   if (poll) void pollDesk();
 }
 
@@ -776,20 +810,13 @@ async function pollDesk({ withCal = false } = {}) {
     }
     const rawAgents = (agentsSnap.agents || []).filter((a) => a.id !== "grok-bot");
     if (grokBot.status !== "idle") rawAgents.unshift(grokBot);
+    const overlayRow = overlayAsAgent(overlay);
     if (
-      overlay?.status === "waiting" &&
-      !rawAgents.some((a) => a.id === "grok-bot" && a.status === "waiting")
+      overlayRow &&
+      shouldInjectOverlay(overlay, rawAgents) &&
+      dismissedChips.get(overlayRow.id) !== agentChipKey(overlayRow)
     ) {
-      rawAgents.unshift({
-        id: "grok-bot",
-        name: overlay.tool || "Grok Bot",
-        status: "waiting",
-        label: "needs you",
-        threads: 1,
-        cwd: overlay.name || "",
-        path: "",
-        processOn: true,
-      });
+      rawAgents.unshift(overlayRow);
     }
     const agents = latchAgents(rawAgents, now);
     const merged = {
@@ -1116,10 +1143,9 @@ ipcMain.on("pet-drag-start", () => startDrag());
 ipcMain.handle("pet-drag-end", () => endDrag());
 
 ipcMain.on("pet-click-through", (event, ignore) => {
-  if (drag) return;
-  const w = BrowserWindow.fromWebContents(event.sender);
-  if (!w) return;
-  w.setIgnoreMouseEvents(Boolean(ignore), { forward: true });
+  if (BrowserWindow.fromWebContents(event.sender) !== win) return;
+  rendererLive = !Boolean(ignore);
+  applyClickThrough();
 });
 
 ipcMain.on("pet-set-scene", (_e, next) => {
@@ -1165,9 +1191,20 @@ ipcMain.on("pet-open-agent", (_e, id) => {
   }
 });
 ipcMain.on("pet-ack-agent", (_e, id) => {
-  const waiting = (lastDesk.agents || []).find((a) => a.id === id) || lastDesk.agents?.find((a) => a.status === "waiting");
-  if (waiting) ackedWaitKey = waitKey({ status: "waiting", tool: waiting.name, name: waiting.cwd });
-  else ackedWaitKey = waitKey(lastCodex);
+  const agent =
+    (lastDesk.agents || []).find((a) => a.id === id) ||
+    lastDesk.agents?.find((a) => a.status === "waiting") ||
+    overlayAsAgent(overlay);
+  if (agent) {
+    dismissedChips.set(agent.id, agentChipKey(agent));
+    if (agent.status === "waiting") {
+      ackedWaitKey = waitKey({ status: "waiting", tool: agent.name, name: agent.cwd });
+    }
+  } else ackedWaitKey = waitKey(lastCodex);
+  if (overlay && overlayAgentId(overlay.tool) === id) {
+    const row = overlayAsAgent(overlay);
+    if (!agent || (row && agentChipKey(row) === agentChipKey(agent))) overlay = null;
+  }
 });
 ipcMain.on("pet-open-perm", (_e, id) => {
   if (typeof id !== "string" || !id) return;

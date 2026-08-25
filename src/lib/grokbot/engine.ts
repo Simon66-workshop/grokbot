@@ -17,7 +17,7 @@ import { bodyForShape } from "./shapes";
 import { exclaimStem, stadiumPath } from "./paths";
 import { DEMO_CUES } from "./demo";
 import { SCENES, writeScene, type SceneId } from "./scenes";
-import { canEnterState, hsvToHex, moodBlend, moodTint, resolveFaceHex, MOOD_FACE, type MoodId } from "./color";
+import { canEnterState, faceFillHsv, hsvToHex, MOOD_FACE, type MoodId } from "./color";
 import { createLatch, MOOD_RANK } from "./hysteresis";
 
 type BounceCue = {
@@ -303,10 +303,10 @@ export class GrokBotEngine {
 
   private seedOrbits() {
     this.orbits = [
-      { rx: 118, ry: 42, tilt: 0.7, yaw: 0.2, speed: 0.85, phase: 0, hueA: 12, hueB: 48, width: 5.5 },
-      { rx: 108, ry: 54, tilt: -0.55, yaw: 1.1, speed: -0.62, phase: 1.4, hueA: 265, hueB: 200, width: 5 },
-      { rx: 96, ry: 70, tilt: 1.05, yaw: 2.2, speed: 0.48, phase: 2.6, hueA: 165, hueB: 195, width: 4.5 },
-      { rx: 124, ry: 28, tilt: 0.25, yaw: 0.6, speed: 1.05, phase: 0.8, hueA: 300, hueB: 170, width: 4 },
+      { rx: 122, ry: 44, tilt: 0.7, yaw: 0.2, speed: 0.85, phase: 0, hueA: 12, hueB: 48, width: 5.5 },
+      { rx: 116, ry: 52, tilt: -0.55, yaw: 1.1, speed: -0.62, phase: 1.4, hueA: 265, hueB: 200, width: 5 },
+      { rx: 112, ry: 64, tilt: 1.05, yaw: 2.2, speed: 0.48, phase: 2.6, hueA: 165, hueB: 195, width: 4.5 },
+      { rx: 130, ry: 32, tilt: 0.25, yaw: 0.6, speed: 1.05, phase: 0.8, hueA: 300, hueB: 170, width: 4 },
     ];
   }
 
@@ -384,6 +384,7 @@ export class GrokBotEngine {
 
   setFaceColor(c: FaceColor) {
     this.faceColor = c;
+    this.snapDisplayColor();
   }
 
   setMood(id: MoodId) {
@@ -762,10 +763,15 @@ export class GrokBotEngine {
     }
   }
 
+  private snapDisplayColor() {
+    const target = faceFillHsv(this.faceColor, this.mood, this.state, this.expression);
+    this.shownH = target.h;
+    this.shownS = target.s;
+    this.shownV = target.v;
+  }
+
   private tickColor(dt: number) {
-    const home = resolveFaceHex(this.faceColor);
-    const blend = moodBlend(this.mood, this.state, this.expression);
-    const target = moodTint(home, blend.hex, blend.amount);
+    const target = faceFillHsv(this.faceColor, this.mood, this.state, this.expression);
     const k = 1 - Math.exp(-dt * (this.state === "bounce" ? 4.2 : 2.6));
     this.shownH = ((this.shownH + (((target.h - this.shownH + 540) % 360) - 180) * k) + 360) % 360;
     this.shownS += (target.s - this.shownS) * k;

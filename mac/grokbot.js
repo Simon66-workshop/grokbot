@@ -103,9 +103,9 @@
     {
       id: 0,
       name: "Rest",
-      // Chubby ovals, generous gap — cute twins, not quotation marks.
-      left: e(-20, -12, 22, 26, 2),
-      right: e(44, -11, 21.5, 25.5, 2)
+      // Smaller ovals than the pre-PR giants (22×26), not circular dots.
+      left: e(-22, -12, 14.8, 20.6, 4),
+      right: e(30, -11, 14.2, 19.8, 4)
     },
     {
       id: 1,
@@ -134,8 +134,8 @@
     {
       id: 5,
       name: "Joy",
-      left: e(-16, -4, 20, 32, 2),
-      right: e(42, -3, 19.5, 31, 2)
+      left: e(-20, -5, 13.6, 23.5, 4),
+      right: e(28, -4, 13, 22.5, 4)
     },
     {
       id: 6,
@@ -158,8 +158,8 @@
     {
       id: 9,
       name: "Focus",
-      left: e(-8, 4, 14, 16, -8, 1),
-      right: e(22, 2, 22, 22, 0, 1)
+      left: e(-20, -8, 11.2, 16, 4),
+      right: e(26, -7, 13.6, 18.8, 4)
     },
     {
       id: 10,
@@ -745,22 +745,29 @@
     play: 0.5,
     sleep: 0.62
   };
-  function lerpHue(a, b, t) {
-    const d = (b - a + 540) % 360 - 180;
-    return (a + d * t + 360) % 360;
-  }
-  function mixHsv(a, b, t) {
+  function mixRgb(a, b, t) {
     const u = Math.max(0, Math.min(1, t));
     return {
-      h: lerpHue(a.h, b.h, u),
-      s: a.s + (b.s - a.s) * u,
-      v: a.v + (b.v - a.v) * u
+      r: a.r + (b.r - a.r) * u,
+      g: a.g + (b.g - a.g) * u,
+      b: a.b + (b.b - a.b) * u
     };
   }
+  function mixHex(a, b, t) {
+    const c = mixRgb(hexToRgb(a), hexToRgb(b), t);
+    return rgbToHex(c.r, c.g, c.b);
+  }
+  var MOOD_TINT_MAX = 0.28;
   function moodTint(homeHex, moodHex, amount) {
     const home = hexToHsv(homeHex);
     if (!moodHex || amount <= 0) return home;
-    return mixHsv(home, hexToHsv(moodHex), amount);
+    const t = Math.min(Math.max(amount, 0), MOOD_TINT_MAX);
+    return hexToHsv(mixHex(homeHex, moodHex, t));
+  }
+  function faceFillHsv(faceColor, mood, state = "idle", expression = 0) {
+    const home = resolveFaceHex(faceColor);
+    const blend = moodBlend(mood, state, expression);
+    return moodTint(home, blend.hex, blend.amount);
   }
   var MOOD_FACE = {
     idle: 0,
@@ -1152,10 +1159,10 @@
     }
     seedOrbits() {
       this.orbits = [
-        { rx: 118, ry: 42, tilt: 0.7, yaw: 0.2, speed: 0.85, phase: 0, hueA: 12, hueB: 48, width: 5.5 },
-        { rx: 108, ry: 54, tilt: -0.55, yaw: 1.1, speed: -0.62, phase: 1.4, hueA: 265, hueB: 200, width: 5 },
-        { rx: 96, ry: 70, tilt: 1.05, yaw: 2.2, speed: 0.48, phase: 2.6, hueA: 165, hueB: 195, width: 4.5 },
-        { rx: 124, ry: 28, tilt: 0.25, yaw: 0.6, speed: 1.05, phase: 0.8, hueA: 300, hueB: 170, width: 4 }
+        { rx: 122, ry: 44, tilt: 0.7, yaw: 0.2, speed: 0.85, phase: 0, hueA: 12, hueB: 48, width: 5.5 },
+        { rx: 116, ry: 52, tilt: -0.55, yaw: 1.1, speed: -0.62, phase: 1.4, hueA: 265, hueB: 200, width: 5 },
+        { rx: 112, ry: 64, tilt: 1.05, yaw: 2.2, speed: 0.48, phase: 2.6, hueA: 165, hueB: 195, width: 4.5 },
+        { rx: 130, ry: 32, tilt: 0.25, yaw: 0.6, speed: 1.05, phase: 0.8, hueA: 300, hueB: 170, width: 4 }
       ];
     }
     on(ev, fn) {
@@ -1220,6 +1227,7 @@
     }
     setFaceColor(c) {
       this.faceColor = c;
+      this.snapDisplayColor();
     }
     setMood(id) {
       const held = this.moodHold.sample(id, this.elapsed * 1e3);
@@ -1570,10 +1578,14 @@
         this.trail.shift();
       }
     }
+    snapDisplayColor() {
+      const target = faceFillHsv(this.faceColor, this.mood, this.state, this.expression);
+      this.shownH = target.h;
+      this.shownS = target.s;
+      this.shownV = target.v;
+    }
     tickColor(dt) {
-      const home = resolveFaceHex(this.faceColor);
-      const blend = moodBlend(this.mood, this.state, this.expression);
-      const target = moodTint(home, blend.hex, blend.amount);
+      const target = faceFillHsv(this.faceColor, this.mood, this.state, this.expression);
       const k = 1 - Math.exp(-dt * (this.state === "bounce" ? 4.2 : 2.6));
       this.shownH = (this.shownH + ((target.h - this.shownH + 540) % 360 - 180) * k + 360) % 360;
       this.shownS += (target.s - this.shownS) * k;
@@ -1801,6 +1813,23 @@
     }
   };
 
+  // src/lib/grokbot/ribbons.ts
+  function closestDistToSegment(ax, ay, bx, by, cx, cy) {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 < 1e-8 ? 0 : Math.max(0, Math.min(1, ((cx - ax) * dx + (cy - ay) * dy) / len2));
+    return Math.hypot(ax + t * dx - cx, ay + t * dy - cy);
+  }
+  function segmentHitsDisk(ax, ay, bx, by, cx, cy, r) {
+    return closestDistToSegment(ax, ay, bx, by, cx, cy) < r;
+  }
+  function shouldDrawRibbonSeg(midZ, ax, ay, bx, by, clip, stroke, hemisphere) {
+    if (hemisphere < 0) return midZ <= 0;
+    if (midZ <= 0) return false;
+    return !segmentHitsDisk(ax, ay, bx, by, clip.cx, clip.cy, clip.r + stroke * 0.55);
+  }
+
   // src/lib/grokbot/renderer.ts
   function drawPupil(ctx2, eye, side, lookX, lookY, alpha) {
     const inboard = side === "left" ? 1 : -1;
@@ -1814,15 +1843,15 @@
     ctx2.rotate(eye.rot);
     ctx2.fillStyle = "#0a0a0a";
     ctx2.beginPath();
-    ctx2.ellipse(0, 0, Math.max(2.2, eye.w * 0.28), Math.max(2.8, eye.h * 0.32), 0, 0, Math.PI * 2);
+    ctx2.ellipse(0, 0, Math.max(1.2, eye.w * 0.28), Math.max(1.3, eye.h * 0.32), 0, 0, Math.PI * 2);
     ctx2.fill();
     ctx2.fillStyle = "#fffdf8";
     ctx2.beginPath();
     ctx2.ellipse(
       inboard * eye.w * 0.1 - gx * 0.4,
       -eye.h * 0.16 - gy * 0.3,
-      Math.max(1.1, eye.w * 0.09),
-      Math.max(1, eye.h * 0.07),
+      Math.max(0.7, eye.w * 0.11),
+      Math.max(0.65, eye.h * 0.09),
       0,
       0,
       Math.PI * 2
@@ -1868,9 +1897,21 @@
     const faceW = engine.t.faceW.value;
     const lookX = engine.t.gazeX.value + engine.t.yaw.value * 0.55;
     const lookY = engine.t.gazeY.value + engine.t.pitch.value * 0.45;
-    drawTrail(ctx2, engine);
-    if (orbitW > 0.02) drawOrbits(ctx2, engine, orbitW, -1);
-    if (streakW > 0.02) drawStreaks(ctx2, engine, streakW, -1);
+    const lookScaleX = 1 + lookX * lookX * 0.03 - lookY * lookY * 0.015;
+    const lookScaleY = 1 + lookY * lookY * 0.025 - lookX * lookX * 0.018;
+    const rx = FACE_R * bodyScale * (1 / squash) * lookScaleX + 7;
+    const ry = FACE_R * bodyScale * squash * lookScaleY + 7;
+    const bodyClip = {
+      cx: lookX * 4,
+      cy: lookY * 3.5,
+      r: Math.max(rx, ry),
+      rx,
+      ry,
+      rot: lookX * 0.04
+    };
+    drawTrail(ctx2, engine, bodyClip);
+    if (orbitW > 0.02) drawOrbits(ctx2, engine, orbitW, -1, bodyClip);
+    if (streakW > 0.02) drawStreaks(ctx2, engine, streakW, -1, bodyClip);
     const hideBody = dotsW > 0.45;
     if (!hideBody && faceW > 0.08) {
       drawContactShadow(ctx2, faceW, bodyScale, hop, hopX, lookX, lookY);
@@ -1919,8 +1960,8 @@
     }
     if (dotsW > 0.04) drawLoadingDots(ctx2, engine, face, theme, dotsW);
     if (satW > 0.04) drawSatellites(ctx2, engine, face, theme, satW);
-    if (orbitW > 0.02) drawOrbits(ctx2, engine, orbitW, 1);
-    if (streakW > 0.02) drawStreaks(ctx2, engine, streakW, 1);
+    if (orbitW > 0.02) drawOrbits(ctx2, engine, orbitW, 1, bodyClip);
+    if (streakW > 0.02) drawStreaks(ctx2, engine, streakW, 1, bodyClip);
     drawSparks(ctx2, engine);
     if (engine.debug) drawDebug(ctx2, engine, theme);
     ctx2.restore();
@@ -2029,48 +2070,93 @@
     }
     ctx2.restore();
   }
-  function drawOrbits(ctx2, engine, w, hemisphere) {
-    const samples = 72;
-    for (const o of engine.orbits) {
-      const pts = [];
-      for (let i = 0; i <= samples; i++) {
-        const a = i / samples * Math.PI * 2 + o.phase;
-        const x0 = Math.cos(a) * o.rx;
-        const y0 = Math.sin(a) * o.ry;
-        const z0 = 0;
-        const ct = Math.cos(o.tilt);
-        const st = Math.sin(o.tilt);
-        const y1 = y0 * ct - z0 * st;
-        const z1 = y0 * st + z0 * ct;
-        const cy = Math.cos(o.yaw);
-        const sy = Math.sin(o.yaw);
-        const x2 = x0 * cy + z1 * sy;
-        const z2 = -x0 * sy + z1 * cy;
-        pts.push({ x: x2, y: y1, z: z2 });
-      }
-      ctx2.save();
-      ctx2.lineCap = "round";
-      ctx2.lineJoin = "round";
-      ctx2.lineWidth = o.width;
-      ctx2.globalAlpha = w * 0.92;
-      for (let i = 0; i < pts.length - 1; i++) {
-        const a = pts[i];
-        const b = pts[i + 1];
-        const midZ = (a.z + b.z) / 2;
-        if (hemisphere < 0 && midZ > 8) continue;
-        if (hemisphere > 0 && midZ < -8) continue;
-        const u = i / (pts.length - 1);
-        const h = lerp(o.hueA, o.hueB, u);
-        ctx2.beginPath();
-        ctx2.strokeStyle = hueStroke(h, 0.95);
-        ctx2.moveTo(a.x, a.y);
-        ctx2.lineTo(b.x, b.y);
-        ctx2.stroke();
-      }
-      ctx2.restore();
+  var ribbonLayer = null;
+  function scratchLayer(w, h) {
+    if (typeof document === "undefined") return null;
+    if (!ribbonLayer || ribbonLayer.width !== w || ribbonLayer.height !== h) {
+      ribbonLayer = document.createElement("canvas");
+      ribbonLayer.width = w;
+      ribbonLayer.height = h;
     }
+    return ribbonLayer;
   }
-  function drawStreaks(ctx2, engine, w, hemisphere) {
+  function punchBodyHole(ctx2, clip) {
+    ctx2.save();
+    ctx2.globalCompositeOperation = "destination-out";
+    ctx2.beginPath();
+    ctx2.translate(clip.cx, clip.cy);
+    ctx2.rotate(clip.rot);
+    ctx2.ellipse(0, 0, clip.rx, clip.ry, 0, 0, Math.PI * 2);
+    ctx2.fill();
+    ctx2.restore();
+  }
+  function withFrontRibbonLayer(ctx2, clip, draw) {
+    const layer = scratchLayer(ctx2.canvas.width, ctx2.canvas.height);
+    if (!layer || typeof ctx2.getTransform !== "function") {
+      ctx2.save();
+      draw(ctx2);
+      ctx2.restore();
+      return;
+    }
+    const ltx = layer.getContext("2d");
+    if (!ltx) return;
+    const xf = ctx2.getTransform();
+    ltx.setTransform(1, 0, 0, 1, 0, 0);
+    ltx.clearRect(0, 0, layer.width, layer.height);
+    ltx.setTransform(xf);
+    draw(ltx);
+    punchBodyHole(ltx, clip);
+    ctx2.save();
+    ctx2.setTransform(1, 0, 0, 1, 0, 0);
+    ctx2.drawImage(layer, 0, 0);
+    ctx2.setTransform(xf);
+    ctx2.restore();
+  }
+  function drawOrbits(ctx2, engine, w, hemisphere, clip) {
+    const paint = (target) => {
+      const samples = 72;
+      for (const o of engine.orbits) {
+        const pts = [];
+        for (let i = 0; i <= samples; i++) {
+          const a = i / samples * Math.PI * 2 + o.phase;
+          const x0 = Math.cos(a) * o.rx;
+          const y0 = Math.sin(a) * o.ry;
+          const z0 = 0;
+          const ct = Math.cos(o.tilt);
+          const st = Math.sin(o.tilt);
+          const y1 = y0 * ct - z0 * st;
+          const z1 = y0 * st + z0 * ct;
+          const cy = Math.cos(o.yaw);
+          const sy = Math.sin(o.yaw);
+          const x2 = x0 * cy + z1 * sy;
+          const z2 = -x0 * sy + z1 * cy;
+          pts.push({ x: x2, y: y1, z: z2 });
+        }
+        target.save();
+        target.lineCap = "round";
+        target.lineJoin = "round";
+        target.lineWidth = o.width;
+        target.globalAlpha = w * 0.92;
+        for (let i = 0; i < pts.length - 1; i++) {
+          const a = pts[i];
+          const b = pts[i + 1];
+          const midZ = (a.z + b.z) / 2;
+          if (!shouldDrawRibbonSeg(midZ, a.x, a.y, b.x, b.y, clip, o.width, hemisphere)) continue;
+          const u = i / (pts.length - 1);
+          const h = lerp(o.hueA, o.hueB, u);
+          target.beginPath();
+          target.strokeStyle = hueStroke(h, 0.95);
+          target.moveTo(a.x, a.y);
+          target.lineTo(b.x, b.y);
+          target.stroke();
+        }
+        target.restore();
+      }
+    };
+    if (hemisphere > 0) withFrontRibbonLayer(ctx2, clip, paint);
+    else paint(ctx2);
+  }
+  function drawStreaks(ctx2, engine, w, hemisphere, clip) {
     if (hemisphere < 0) return;
     const t = performance.now() / 1e3;
     const streaks = [
@@ -2078,29 +2164,31 @@
       { y: -18, rot: -0.38, h0: 165, h1: 200, len: 120 },
       { y: -50, rot: -0.52, h0: 280, h1: 330, len: 110 }
     ];
-    ctx2.save();
-    ctx2.globalAlpha = w;
-    ctx2.lineCap = "round";
-    for (const s of streaks) {
-      ctx2.save();
-      ctx2.rotate(s.rot + Math.sin(t) * 0.04);
-      ctx2.translate(-20, s.y);
-      const g = ctx2.createLinearGradient(-s.len / 2, 0, s.len / 2, 0);
-      g.addColorStop(0, hueStroke(s.h0, 0));
-      g.addColorStop(0.25, hueStroke(s.h0, 0.95));
-      g.addColorStop(0.7, hueStroke(s.h1, 0.95));
-      g.addColorStop(1, hueStroke(s.h1, 0));
-      ctx2.strokeStyle = g;
-      ctx2.lineWidth = 6.5;
-      ctx2.beginPath();
-      ctx2.moveTo(-s.len / 2, 0);
-      ctx2.quadraticCurveTo(0, -18, s.len / 2, 8);
-      ctx2.stroke();
-      ctx2.restore();
-    }
-    ctx2.restore();
+    withFrontRibbonLayer(ctx2, clip, (target) => {
+      target.save();
+      target.globalAlpha = w;
+      target.lineCap = "round";
+      for (const s of streaks) {
+        target.save();
+        target.rotate(s.rot + Math.sin(t) * 0.04);
+        target.translate(-20, s.y);
+        const g = target.createLinearGradient(-s.len / 2, 0, s.len / 2, 0);
+        g.addColorStop(0, hueStroke(s.h0, 0));
+        g.addColorStop(0.25, hueStroke(s.h0, 0.95));
+        g.addColorStop(0.7, hueStroke(s.h1, 0.95));
+        g.addColorStop(1, hueStroke(s.h1, 0));
+        target.strokeStyle = g;
+        target.lineWidth = 6.5;
+        target.beginPath();
+        target.moveTo(-s.len / 2, 0);
+        target.quadraticCurveTo(0, -18, s.len / 2, 8);
+        target.stroke();
+        target.restore();
+      }
+      target.restore();
+    });
   }
-  function drawTrail(ctx2, engine) {
+  function drawTrail(ctx2, engine, _clip) {
     const tr = engine.trail;
     if (tr.length < 2) return;
     ctx2.save();
@@ -2300,6 +2388,12 @@
     } catch {
     }
   }
+  function dockMainFor(box, faceScale) {
+    const radius = box * faceScale;
+    const lift = faceScale > 0.28 ? 0.06 * radius : 0;
+    const ballBottom = box / 2 - lift + radius;
+    return Math.round(Math.max(box - 72, ballBottom + 16));
+  }
   function layoutFor(id) {
     const size = PET_SIZES[id];
     const box = size.box;
@@ -2312,7 +2406,7 @@
       box,
       faceScale: size.faceScale,
       inset,
-      dockMain: box - 72,
+      dockMain: dockMainFor(box, size.faceScale),
       faceSideTop: Math.round((h - box) / 2),
       ball: {
         bottom: { x: STAGE_W / 2, y: box / 2 },
@@ -2536,6 +2630,24 @@
     const ny = Math.max(-1, Math.min(1, (clientY - (r.top + r.height / 2)) / Math.max(72, r.height * 0.42)));
     return { x: nx, y: ny };
   }
+  function agentChipKey(agent) {
+    return `${agent.id || ""}:${agent.status || ""}:${agent.cwd || ""}`;
+  }
+  function isAgentChipDismissed(agent, dismissed) {
+    const id = agent.id || "";
+    const prev = dismissed instanceof Map ? dismissed.get(id) : dismissed[id];
+    return Boolean(prev) && prev === agentChipKey(agent);
+  }
+  function visibleAgentChips(agents, opts = {}) {
+    const watch = opts.watch !== false;
+    const dismissed = opts.dismissed;
+    return (agents || []).filter((a) => {
+      if (!a || a.status === "idle") return false;
+      if (dismissed && isAgentChipDismissed(a, dismissed)) return false;
+      if (watch) return true;
+      return a.status === "waiting" || a.status === "error";
+    });
+  }
   function readFaceColor() {
     try {
       return localStorage.getItem(COLOR_KEY) || GROK_BLUE;
@@ -2672,7 +2784,7 @@
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  opacity: 0;
+  opacity: 1;
   pointer-events: none;
   z-index: 3;
 }
@@ -2686,10 +2798,13 @@
 .grok-stage .presets { order: 7; }
 .grok-stage[data-side="top"] .dock { flex-direction: column-reverse; }
 .grok-stage #prefs button.dim { opacity: 0.62; }
-.grok-stage.open .dock {
-  opacity: 1;
-  pointer-events: auto;
-}
+.grok-stage .whisper,
+.grok-stage .agents,
+.grok-stage .desk { pointer-events: none; }
+.grok-stage .whisper:not([hidden]),
+.grok-stage .agents button,
+.grok-stage .desk .chip { pointer-events: auto; }
+.grok-stage.open .dock { pointer-events: auto; }
 .grok-stage .presets { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .grok-stage .presets button {
   width: 14px; height: 14px; border-radius: 999px;
@@ -2742,6 +2857,7 @@
   color: #fffcf6;
   font: 500 11px/1.35 "SF Pro Text", "Helvetica Neue", sans-serif;
   text-align: center;
+  cursor: pointer;
 }
 .grok-stage .whisper[hidden] { display: none; }
 .grok-stage .agents,
@@ -2810,6 +2926,14 @@
   width: 100%;
   text-align: center;
   padding: 5px 8px;
+}
+.grok-stage:not(.open) #actions,
+.grok-stage:not(.open) #scenes,
+.grok-stage:not(.open) #prefs,
+.grok-stage:not(.open) #wheel,
+.grok-stage:not(.open) .presets,
+.grok-stage:not(.open) .studio {
+  display: none;
 }
 `;
   function injectStyle() {
@@ -2978,10 +3102,23 @@
       whisperEl.textContent = text;
       whisperEl.hidden = false;
     }
+    function dismissAgentChip(agent) {
+      dismissedAgents.set(agent.id, agentChipKey(agent));
+      ackedWait = agentChipKey(agent);
+      if (pet) window.pet?.ackAgent?.(agent.id);
+      if (whisper && whisper.startsWith(agent.name)) {
+        whisper = "";
+        window.clearTimeout(whisperTimer);
+      }
+      paintAgents();
+      paintWhisper();
+      paintBrief();
+      if (isHotNode(document.elementFromPoint(lastClientX, lastClientY))) interactOn();
+    }
     function paintAgents() {
       if (!agentsEl) return;
       agentsEl.replaceChildren();
-      const list = watchCodex ? desk.agents.filter((a) => a.status !== "idle") : [];
+      const list = visibleAgentChips(desk.agents, { watch: watchCodex, dismissed: dismissedAgents });
       if (!list.length) {
         agentsEl.hidden = true;
         return;
@@ -2994,13 +3131,13 @@
         const klass = agent.status === "waiting" ? "wait" : agent.status === "error" ? "err" : agent.status === "done" ? "done" : "";
         if (klass) b.classList.add(klass);
         b.textContent = agent.cwd ? `${agent.name} \xB7 ${agent.cwd}` : `${agent.name} \xB7 ${agent.label}`;
-        b.title = "Open this tool";
-        b.addEventListener("click", () => {
-          ackedWait = `${agent.id}:${agent.status}:${agent.cwd}`;
-          if (pet) {
-            window.pet?.ackAgent?.(agent.id);
-            window.pet?.openAgent?.(agent.id);
-          } else showWhisper(`Would open ${agent.name} on your Mac`);
+        b.title = "Hide this";
+        b.addEventListener("click", (e2) => {
+          e2.preventDefault();
+          e2.stopPropagation();
+          lastClientX = e2.clientX;
+          lastClientY = e2.clientY;
+          dismissAgentChip(agent);
         });
         agentsEl.appendChild(b);
       }
@@ -3138,13 +3275,13 @@
       paintDesk();
       engine.setMood(moodFromDesk(snap));
       syncAutoWork();
+      const waiting = snap.agents.find((a) => a.status === "waiting");
+      const running = snap.agents.find((a) => a.status === "running");
+      const errored = snap.agents.find((a) => a.status === "error");
+      const done = snap.agents.find((a) => a.status === "done");
       if (!fromWatch) return;
       const nextAgents = snap.agents.map((a) => `${a.id}:${a.status}`).join("|");
       if (nextAgents !== prevAgents) {
-        const waiting = snap.agents.find((a) => a.status === "waiting");
-        const running = snap.agents.find((a) => a.status === "running");
-        const errored = snap.agents.find((a) => a.status === "error");
-        const done = snap.agents.find((a) => a.status === "done");
         engine.noteInput();
         if (errored) {
           engine.setExpression(17);
@@ -3171,7 +3308,6 @@
       whisper = text;
       paintWhisper();
       paintBrief();
-      if (!dockOpen) showDock(true);
       window.clearTimeout(whisperTimer);
       whisperTimer = window.setTimeout(() => {
         if (whisper === text) {
@@ -3248,6 +3384,7 @@
     let whisper = "";
     let whisperTimer = 0;
     let ackedWait = "";
+    const dismissedAgents = /* @__PURE__ */ new Map();
     let nudgeTimer = 0;
     let briefing = false;
     let sceneBeforeAuto = null;
@@ -3382,17 +3519,51 @@
       }
     });
     const offNudge = window.pet?.onNudge?.(() => playNudge());
-    if (pet) {
-      wrap.addEventListener("pointerenter", onFaceEnter);
-      wrap.addEventListener("pointerleave", onFaceLeave);
-      dock.addEventListener("pointerenter", onFaceEnter);
-      dock.addEventListener("pointerleave", onFaceLeave);
+    whisperEl?.addEventListener("click", (e2) => {
+      e2.preventDefault();
+      e2.stopPropagation();
+      if (!whisper && !(dockOpen && desk.digest && desk.digest !== "All quiet.")) return;
+      whisper = "";
+      window.clearTimeout(whisperTimer);
+      paintWhisper();
+      paintBrief();
+    });
+    let lastClientX = 0;
+    let lastClientY = 0;
+    function isHotNode(el) {
+      if (!(el instanceof Element)) return false;
+      if (wrap.contains(el)) return true;
+      if (whisperEl && !whisperEl.hidden && whisperEl.contains(el)) return true;
+      if (el.closest("#agents button, #desk .chip, #whisper")) return true;
+      if (dockOpen && dock.contains(el)) return true;
+      return false;
     }
-    function onFaceEnter() {
+    function onHotEnter() {
       interactOn();
     }
-    function onFaceLeave() {
-      interactOff();
+    function onHotLeave(e2) {
+      if (isHotNode(e2.relatedTarget)) return;
+      requestAnimationFrame(() => {
+        if (isHotNode(document.elementFromPoint(lastClientX, lastClientY))) {
+          interactOn();
+          return;
+        }
+        interactOff();
+      });
+    }
+    function onHotMove(e2) {
+      lastClientX = e2.clientX;
+      lastClientY = e2.clientY;
+    }
+    function onDockOver(e2) {
+      if (isHotNode(e2.target)) onHotEnter();
+    }
+    if (pet) {
+      wrap.addEventListener("pointerenter", onHotEnter);
+      wrap.addEventListener("pointerleave", onHotLeave);
+      dock.addEventListener("pointerover", onDockOver);
+      dock.addEventListener("pointerout", onHotLeave);
+      window.addEventListener("pointermove", onHotMove, { passive: true });
     }
     function sizeCanvas() {
       const fit = (el, fallback) => {
@@ -3582,7 +3753,7 @@
       const codexBtn = document.createElement("button");
       codexBtn.type = "button";
       codexBtn.dataset.pref = "codex";
-      codexBtn.title = "Watch local Codex, Claude, Cursor, Gemini, and other agents";
+      codexBtn.title = "Show working agent chips. Off hides Codex, Cursor, and Grok Bot working pills.";
       codexBtn.classList.add("dim");
       codexBtn.addEventListener("click", () => {
         watchCodex = !watchCodex;
@@ -3600,7 +3771,6 @@
     window.pet?.setScene?.(engine.scene);
     window.pet?.setMuted?.(isMuted());
     window.pet?.setAutoWork?.(autoWork);
-    window.pet?.setCodexWatch?.(watchCodex);
     if (web) applyDesk(demoDesk(), false);
     if (studio && opts.studioHref) {
       studio.hidden = false;
@@ -3867,10 +4037,11 @@
       window.removeEventListener("pointerup", onWinUp, true);
       window.removeEventListener("mouseup", onWinUp, true);
       wrap.removeEventListener("contextmenu", onMenu);
-      wrap.removeEventListener("pointerenter", onFaceEnter);
-      wrap.removeEventListener("pointerleave", onFaceLeave);
-      dock.removeEventListener("pointerenter", onFaceEnter);
-      dock.removeEventListener("pointerleave", onFaceLeave);
+      wrap.removeEventListener("pointerenter", onHotEnter);
+      wrap.removeEventListener("pointerleave", onHotLeave);
+      dock.removeEventListener("pointerover", onDockOver);
+      dock.removeEventListener("pointerout", onHotLeave);
+      window.removeEventListener("pointermove", onHotMove);
       wheel.removeEventListener("pointerdown", onWheelDown);
       wheel.removeEventListener("pointermove", onWheelMove);
       if (typeof offCursor === "function") offCursor();

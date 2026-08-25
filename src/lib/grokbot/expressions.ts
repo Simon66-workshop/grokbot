@@ -33,9 +33,9 @@ export const EXPRESSIONS: ExpressionDef[] = [
   {
     id: 0,
     name: "Rest",
-    // Chubby ovals, generous gap — cute twins, not quotation marks.
-    left: e(-20, -12, 22, 26, 2),
-    right: e(44, -11, 21.5, 25.5, 2),
+    // Smaller ovals than the pre-PR giants (22×26), not circular dots.
+    left: e(-22, -12, 14.8, 20.6, 4),
+    right: e(30, -11, 14.2, 19.8, 4),
   },
   {
     id: 1,
@@ -64,8 +64,8 @@ export const EXPRESSIONS: ExpressionDef[] = [
   {
     id: 5,
     name: "Joy",
-    left: e(-16, -4, 20, 32, 2),
-    right: e(42, -3, 19.5, 31, 2),
+    left: e(-20, -5, 13.6, 23.5, 4),
+    right: e(28, -4, 13.0, 22.5, 4),
   },
   {
     id: 6,
@@ -88,8 +88,8 @@ export const EXPRESSIONS: ExpressionDef[] = [
   {
     id: 9,
     name: "Focus",
-    left: e(-8, 4, 14, 16, -8, 1),
-    right: e(22, 2, 22, 22, 0, 1),
+    left: e(-20, -8, 11.2, 16.0, 4),
+    right: e(26, -7, 13.6, 18.8, 4),
   },
   {
     id: 10,

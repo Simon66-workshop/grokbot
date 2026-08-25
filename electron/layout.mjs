@@ -13,6 +13,13 @@ export function isPetSize(id) {
   return id === "s" || id === "m" || id === "l";
 }
 
+export function dockMainFor(box, faceScale) {
+  const radius = box * faceScale;
+  const lift = faceScale > 0.28 ? 0.06 * radius : 0;
+  const ballBottom = box / 2 - lift + radius;
+  return Math.round(Math.max(box - 72, ballBottom + 16));
+}
+
 export function layoutFor(id) {
   const size = PET_SIZES[isPetSize(id) ? id : "l"];
   const box = size.box;
@@ -23,6 +30,7 @@ export function layoutFor(id) {
     h,
     box,
     faceScale: size.faceScale,
+    dockMain: dockMainFor(box, size.faceScale),
     ball: {
       bottom: { x: STAGE_W / 2, y: box / 2 },
       top: { x: STAGE_W / 2, y: h - box / 2 },

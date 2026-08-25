@@ -11,9 +11,30 @@ import {
 } from "../electron/desk-core.mjs";
 import { parseMeetingOut, buildDesk } from "../electron/desk.mjs";
 import { notifyCopy } from "../electron/codex.mjs";
-import { grokBotWaitingFromWindows, isGrokBotProcess } from "../electron/grok-bot-app.mjs";
+import { grokBotWaitingFromWindows, isGrokBotProcess, isGrokBotSessionFile } from "../electron/grok-bot-app.mjs";
 import { classifyPermOut, parsePermProbe, probePerms, resolvePerms, unwrapPermCmd } from "../electron/perms.mjs";
-import { bannersQuiet, nextNudge, parseInbox, parseMacScene, parseNudgeUrl, waitKey } from "../electron/nudge.mjs";
+import { readFileSync } from "node:fs";
+import {
+  agentChipKey,
+  ballHitRadius,
+  bannersQuiet,
+  isAgentChipDismissed,
+  isNearBall,
+  nextNudge,
+  overlayAgentId,
+  overlayAsAgent,
+  overlayChipKey,
+  overlayWhisper,
+  parseInbox,
+  parseMacScene,
+  parseNudgeUrl,
+  rememberAgentDismiss,
+  shouldClickThrough,
+  shouldInjectOverlay,
+  visibleAgentChips,
+  waitKey,
+} from "../electron/nudge.mjs";
+import { PET_SIZES, dockMainFor } from "../electron/layout.mjs";
 import { AGENT_RANK, createGate, createLatch, inWorkHoursHyst, soonHyst, stampMeeting, tickMeeting } from "../electron/hysteresis.mjs";
 
 test("composeDigest: waiting agents beat quiet", () => {
@@ -237,6 +258,141 @@ test("parseNudgeUrl reads grokbot scheme", () => {
 test("parseInbox reads hook file", () => {
   const msg = parseInbox('{"status":"done","name":"tests","tool":"Grok Bot"}');
   assert.equal(msg.status, "done");
+});
+
+test("overlayAgentId uses the tool, not always grok-bot", () => {
+  assert.equal(overlayAgentId("Codex"), "codex");
+  assert.equal(overlayAgentId("Grok Bot"), "grok-bot");
+  assert.equal(overlayAgentId(""), "grok-bot");
+});
+
+test("overlayWhisper names the tool and session", () => {
+  assert.equal(overlayWhisper({ tool: "Codex", name: "codex-remind-test" }), "Codex · codex-remind-test");
+  assert.equal(overlayWhisper({ tool: "Codex", status: "waiting" }), "Codex · waiting");
+  assert.equal(overlayWhisper({ tool: "Codex", name: "new-chat" }), "Codex · new-chat");
+});
+
+test("ball tap still opens the dock and color wheel; drag starts from the face", () => {
+  const shell = readFileSync(new URL("../src/lib/grokbot/pet-shell.ts", import.meta.url), "utf8");
+  const bundled = readFileSync(new URL("../mac/grokbot.js", import.meta.url), "utf8");
+  const main = readFileSync(new URL("../electron/main.mjs", import.meta.url), "utf8");
+  const down = shell.slice(shell.indexOf("const onDown"), shell.indexOf("const onMove"));
+  const downJs = bundled.slice(bundled.indexOf("const onDown"), bundled.indexOf("const onMove"));
+  assert.match(shell, /showDock\(!dockOpen\)/);
+  assert.match(bundled, /showDock\(!dockOpen\)/);
+  assert.match(shell, /:not\(\.open\) #wheel/);
+  assert.match(bundled, /:not\(\.open\) #wheel/);
+  assert.match(down, /dragStart/);
+  assert.match(downJs, /dragStart/);
+  assert.match(shell, /wrap\.addEventListener\("pointerdown"/);
+  assert.match(main, /shouldClickThrough/);
+  assert.match(main, /cursorNearBall/);
+  assert.match(shell, /\.agents,\n\.grok-stage \.desk \{ pointer-events: none/);
+  assert.match(shell, /\.agents button/);
+});
+
+test("click-through stays off on the ball and on chips", () => {
+  const ball = { x: 100, y: 100 };
+  const r = ballHitRadius(440, 0.24, 32);
+  assert.ok(isNearBall(100, 100, ball, r));
+  assert.ok(isNearBall(100 + r, 100, ball, r));
+  assert.equal(isNearBall(100 + r + 1, 100, ball, r), false);
+  assert.equal(shouldClickThrough({ nearBall: true, rendererLive: false }), false);
+  assert.equal(shouldClickThrough({ rendererLive: true, nearBall: false }), false);
+  assert.equal(shouldClickThrough({ drag: true }), false);
+  assert.equal(shouldClickThrough({ dockOpen: true }), false);
+  assert.equal(shouldClickThrough({}), true);
+});
+
+test("control dock never auto-opens from waiting or whisper", () => {
+  const shell = readFileSync(new URL("../src/lib/grokbot/pet-shell.ts", import.meta.url), "utf8");
+  const bundled = readFileSync(new URL("../mac/grokbot.js", import.meta.url), "utf8");
+  assert.equal(shell.includes("showDock(true)"), false);
+  assert.equal(bundled.includes("showDock(true)"), false);
+  assert.match(shell, /:not\(\.open\) #actions/);
+  assert.match(bundled, /:not\(\.open\) #actions/);
+});
+
+test("agent chip click dismisses and does not open dock or agent", () => {
+  const shell = readFileSync(new URL("../src/lib/grokbot/pet-shell.ts", import.meta.url), "utf8");
+  const bundled = readFileSync(new URL("../mac/grokbot.js", import.meta.url), "utf8");
+  const paint = shell.slice(shell.indexOf("function paintAgents"), shell.indexOf("function paintDeskChips"));
+  const paintJs = bundled.slice(bundled.indexOf("function paintAgents"), bundled.indexOf("function paintDeskChips"));
+  assert.match(paint, /visibleAgentChips/);
+  assert.match(paint, /dismissAgentChip/);
+  assert.equal(paint.includes("openAgent"), false);
+  assert.equal(paint.includes("showDock"), false);
+  assert.match(paintJs, /visibleAgentChips|dismissAgentChip/);
+  assert.equal(paintJs.includes("openAgent"), false);
+  assert.equal(paintJs.includes("showDock"), false);
+  assert.equal(shell.includes("showDock(true)"), false);
+  assert.equal(bundled.includes("showDock(true)"), false);
+});
+
+test("dismissed working chips stay hidden until status or session changes", () => {
+  const grok = { id: "grok-bot", status: "running", cwd: "", name: "Grok Bot" };
+  const codex = { id: "codex", status: "running", cwd: "new-chat", name: "Codex" };
+  const cursor = { id: "cursor", status: "running", cwd: "", name: "Cursor" };
+  const dismissed = new Map();
+  rememberAgentDismiss(dismissed, grok);
+  rememberAgentDismiss(dismissed, codex);
+  rememberAgentDismiss(dismissed, cursor);
+  const sameTick = visibleAgentChips([grok, codex, cursor], { watch: true, dismissed });
+  assert.deepEqual(sameTick, []);
+  assert.equal(isAgentChipDismissed(grok, dismissed), true);
+  const quietSame = visibleAgentChips(
+    [
+      { ...grok },
+      { ...codex },
+      { ...cursor, status: "running", cwd: "" },
+    ],
+    { watch: true, dismissed },
+  );
+  assert.equal(quietSame.length, 0);
+  const waiting = visibleAgentChips([{ ...grok, status: "waiting" }], { watch: true, dismissed });
+  assert.equal(waiting.length, 1);
+  const newSession = visibleAgentChips([{ ...codex, cwd: "remind" }], { watch: true, dismissed });
+  assert.equal(newSession.length, 1);
+  const error = visibleAgentChips([{ ...cursor, status: "error" }], { watch: true, dismissed });
+  assert.equal(error.length, 1);
+});
+
+test("Agents Watch off hides working chips without a new settings page", () => {
+  const agents = [
+    { id: "grok-bot", status: "running", cwd: "" },
+    { id: "codex", status: "running", cwd: "new-chat" },
+    { id: "cursor", status: "waiting", cwd: "" },
+  ];
+  assert.equal(visibleAgentChips(agents, { watch: true }).length, 3);
+  const hidden = visibleAgentChips(agents, { watch: false });
+  assert.equal(hidden.length, 1);
+  assert.equal(hidden[0].id, "cursor");
+});
+
+test("leftover inbox running is one dismissable overlay input", () => {
+  const msg = parseInbox('{"status":"running","tool":"Grok Bot"}');
+  assert.equal(msg.status, "running");
+  const row = overlayAsAgent(msg);
+  assert.equal(row.id, "grok-bot");
+  assert.equal(row.status, "running");
+  assert.equal(row.label, "working");
+  assert.equal(overlayChipKey(msg), agentChipKey(row));
+  assert.equal(shouldInjectOverlay(msg, []), true);
+  assert.equal(shouldInjectOverlay(msg, [row]), false);
+  const dismissed = rememberAgentDismiss({}, row);
+  assert.equal(visibleAgentChips([row], { watch: true, dismissed }).length, 0);
+  assert.equal(isGrokBotSessionFile("inbox.json"), false);
+  assert.equal(isGrokBotSessionFile("session.json"), true);
+});
+
+test("dockMain keeps chips below the body disk", () => {
+  for (const id of ["s", "m", "l"]) {
+    const size = PET_SIZES[id];
+    const radius = size.box * size.faceScale;
+    const lift = size.faceScale > 0.28 ? 0.06 * radius : 0;
+    const ballBottom = size.box / 2 - lift + radius;
+    assert.ok(dockMainFor(size.box, size.faceScale) >= ballBottom + 8, id);
+  }
 });
 
 test("nextNudge repeats after interval, stops when acked", () => {
