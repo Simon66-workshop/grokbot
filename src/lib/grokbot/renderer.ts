@@ -3,6 +3,7 @@ import { clamp, lerp } from "./math";
 import type { GrokBotEngine } from "./engine";
 import { stadiumPath } from "./paths";
 import { luminance, resolveFaceHex } from "./color";
+import { shouldDrawRibbonSeg, type BodyClip } from "./ribbons";
 
 export type ThemeColors = {
   ink: string;
@@ -99,13 +100,20 @@ export function drawGrokBot(
   const lookX = engine.t.gazeX.value + engine.t.yaw.value * 0.55;
   const lookY = engine.t.gazeY.value + engine.t.pitch.value * 0.45;
 
-  const bodyClip = {
+  const lookScaleX = 1 + lookX * lookX * 0.03 - lookY * lookY * 0.015;
+  const lookScaleY = 1 + lookY * lookY * 0.025 - lookX * lookX * 0.018;
+  const rx = FACE_R * bodyScale * (1 / squash) * lookScaleX + 7;
+  const ry = FACE_R * bodyScale * squash * lookScaleY + 7;
+  const bodyClip: BodyClip = {
     cx: lookX * 4,
     cy: lookY * 3.5,
-    r: FACE_R * bodyScale + 2,
+    r: Math.max(rx, ry),
+    rx,
+    ry,
+    rot: lookX * 0.04,
   };
 
-  drawTrail(ctx, engine);
+  drawTrail(ctx, engine, bodyClip);
   if (orbitW > 0.02) drawOrbits(ctx, engine, orbitW, -1, bodyClip);
   if (streakW > 0.02) drawStreaks(ctx, engine, streakW, -1, bodyClip);
 
@@ -320,14 +328,54 @@ function drawSatellites(
   ctx.restore();
 }
 
-function clipOutsideBody(
-  ctx: CanvasRenderingContext2D,
-  clip: { cx: number; cy: number; r: number },
-) {
+let ribbonLayer: HTMLCanvasElement | null = null;
+
+function scratchLayer(w: number, h: number) {
+  if (typeof document === "undefined") return null;
+  if (!ribbonLayer || ribbonLayer.width !== w || ribbonLayer.height !== h) {
+    ribbonLayer = document.createElement("canvas");
+    ribbonLayer.width = w;
+    ribbonLayer.height = h;
+  }
+  return ribbonLayer;
+}
+
+function punchBodyHole(ctx: CanvasRenderingContext2D, clip: BodyClip) {
+  ctx.save();
+  ctx.globalCompositeOperation = "destination-out";
   ctx.beginPath();
-  ctx.rect(-4000, -4000, 8000, 8000);
-  ctx.arc(clip.cx, clip.cy, clip.r, 0, Math.PI * 2, true);
-  ctx.clip("evenodd");
+  ctx.translate(clip.cx, clip.cy);
+  ctx.rotate(clip.rot);
+  ctx.ellipse(0, 0, clip.rx, clip.ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function withFrontRibbonLayer(
+  ctx: CanvasRenderingContext2D,
+  clip: BodyClip,
+  draw: (c: CanvasRenderingContext2D) => void,
+) {
+  const layer = scratchLayer(ctx.canvas.width, ctx.canvas.height);
+  if (!layer || typeof ctx.getTransform !== "function") {
+    ctx.save();
+    draw(ctx);
+    ctx.restore();
+    return;
+  }
+  const ltx = layer.getContext("2d");
+  if (!ltx) return;
+  const xf = ctx.getTransform();
+  ltx.setTransform(1, 0, 0, 1, 0, 0);
+  ltx.clearRect(0, 0, layer.width, layer.height);
+  ltx.setTransform(xf);
+  draw(ltx);
+  punchBodyHole(ltx, clip);
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(layer, 0, 0);
+  ctx.setTransform(xf);
+  ctx.restore();
 }
 
 function drawOrbits(
@@ -335,55 +383,50 @@ function drawOrbits(
   engine: GrokBotEngine,
   w: number,
   hemisphere: -1 | 1,
-  clip: { cx: number; cy: number; r: number },
+  clip: BodyClip,
 ) {
-  const samples = 72;
-  ctx.save();
-  // Front strokes must never paint on the face / body disk.
-  if (hemisphere > 0) clipOutsideBody(ctx, clip);
-  for (const o of engine.orbits) {
-    const pts: { x: number; y: number; z: number }[] = [];
-    for (let i = 0; i <= samples; i++) {
-      const a = (i / samples) * Math.PI * 2 + o.phase;
-      const x0 = Math.cos(a) * o.rx;
-      const y0 = Math.sin(a) * o.ry;
-      const z0 = 0;
-      const ct = Math.cos(o.tilt);
-      const st = Math.sin(o.tilt);
-      const y1 = y0 * ct - z0 * st;
-      const z1 = y0 * st + z0 * ct;
-      const cy = Math.cos(o.yaw);
-      const sy = Math.sin(o.yaw);
-      const x2 = x0 * cy + z1 * sy;
-      const z2 = -x0 * sy + z1 * cy;
-      pts.push({ x: x2, y: y1, z: z2 });
+  const paint = (target: CanvasRenderingContext2D) => {
+    const samples = 72;
+    for (const o of engine.orbits) {
+      const pts: { x: number; y: number; z: number }[] = [];
+      for (let i = 0; i <= samples; i++) {
+        const a = (i / samples) * Math.PI * 2 + o.phase;
+        const x0 = Math.cos(a) * o.rx;
+        const y0 = Math.sin(a) * o.ry;
+        const z0 = 0;
+        const ct = Math.cos(o.tilt);
+        const st = Math.sin(o.tilt);
+        const y1 = y0 * ct - z0 * st;
+        const z1 = y0 * st + z0 * ct;
+        const cy = Math.cos(o.yaw);
+        const sy = Math.sin(o.yaw);
+        const x2 = x0 * cy + z1 * sy;
+        const z2 = -x0 * sy + z1 * cy;
+        pts.push({ x: x2, y: y1, z: z2 });
+      }
+      target.save();
+      target.lineCap = "round";
+      target.lineJoin = "round";
+      target.lineWidth = o.width;
+      target.globalAlpha = w * 0.92;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i]!;
+        const b = pts[i + 1]!;
+        const midZ = (a.z + b.z) / 2;
+        if (!shouldDrawRibbonSeg(midZ, a.x, a.y, b.x, b.y, clip, o.width, hemisphere)) continue;
+        const u = i / (pts.length - 1);
+        const h = lerp(o.hueA, o.hueB, u);
+        target.beginPath();
+        target.strokeStyle = hueStroke(h, 0.95);
+        target.moveTo(a.x, a.y);
+        target.lineTo(b.x, b.y);
+        target.stroke();
+      }
+      target.restore();
     }
-    ctx.save();
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.lineWidth = o.width;
-    ctx.globalAlpha = w * 0.92;
-    const rim = clip.r + o.width * 0.6;
-    for (let i = 0; i < pts.length - 1; i++) {
-      const a = pts[i]!;
-      const b = pts[i + 1]!;
-      const midZ = (a.z + b.z) / 2;
-      const mx = (a.x + b.x) / 2;
-      const my = (a.y + b.y) / 2;
-      if (hemisphere < 0 && midZ > 2) continue;
-      if (hemisphere > 0 && midZ < -2) continue;
-      if (hemisphere > 0 && Math.hypot(mx - clip.cx, my - clip.cy) < rim) continue;
-      const u = i / (pts.length - 1);
-      const h = lerp(o.hueA, o.hueB, u);
-      ctx.beginPath();
-      ctx.strokeStyle = hueStroke(h, 0.95);
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-  ctx.restore();
+  };
+  if (hemisphere > 0) withFrontRibbonLayer(ctx, clip, paint);
+  else paint(ctx);
 }
 
 function drawStreaks(
@@ -391,7 +434,7 @@ function drawStreaks(
   engine: GrokBotEngine,
   w: number,
   hemisphere: -1 | 1,
-  clip: { cx: number; cy: number; r: number },
+  clip: BodyClip,
 ) {
   if (hemisphere < 0) return;
   const t = performance.now() / 1000;
@@ -400,31 +443,32 @@ function drawStreaks(
     { y: -18, rot: -0.38, h0: 165, h1: 200, len: 120 },
     { y: -50, rot: -0.52, h0: 280, h1: 330, len: 110 },
   ];
-  ctx.save();
-  clipOutsideBody(ctx, clip);
-  ctx.globalAlpha = w;
-  ctx.lineCap = "round";
-  for (const s of streaks) {
-    ctx.save();
-    ctx.rotate(s.rot + Math.sin(t) * 0.04);
-    ctx.translate(-20, s.y);
-    const g = ctx.createLinearGradient(-s.len / 2, 0, s.len / 2, 0);
-    g.addColorStop(0, hueStroke(s.h0, 0));
-    g.addColorStop(0.25, hueStroke(s.h0, 0.95));
-    g.addColorStop(0.7, hueStroke(s.h1, 0.95));
-    g.addColorStop(1, hueStroke(s.h1, 0));
-    ctx.strokeStyle = g;
-    ctx.lineWidth = 6.5;
-    ctx.beginPath();
-    ctx.moveTo(-s.len / 2, 0);
-    ctx.quadraticCurveTo(0, -18, s.len / 2, 8);
-    ctx.stroke();
-    ctx.restore();
-  }
-  ctx.restore();
+  withFrontRibbonLayer(ctx, clip, (target) => {
+    target.save();
+    target.globalAlpha = w;
+    target.lineCap = "round";
+    for (const s of streaks) {
+      target.save();
+      target.rotate(s.rot + Math.sin(t) * 0.04);
+      target.translate(-20, s.y);
+      const g = target.createLinearGradient(-s.len / 2, 0, s.len / 2, 0);
+      g.addColorStop(0, hueStroke(s.h0, 0));
+      g.addColorStop(0.25, hueStroke(s.h0, 0.95));
+      g.addColorStop(0.7, hueStroke(s.h1, 0.95));
+      g.addColorStop(1, hueStroke(s.h1, 0));
+      target.strokeStyle = g;
+      target.lineWidth = 6.5;
+      target.beginPath();
+      target.moveTo(-s.len / 2, 0);
+      target.quadraticCurveTo(0, -18, s.len / 2, 8);
+      target.stroke();
+      target.restore();
+    }
+    target.restore();
+  });
 }
 
-function drawTrail(ctx: CanvasRenderingContext2D, engine: GrokBotEngine) {
+function drawTrail(ctx: CanvasRenderingContext2D, engine: GrokBotEngine, _clip: BodyClip) {
   const tr = engine.trail;
   if (tr.length < 2) return;
   ctx.save();

@@ -1801,6 +1801,23 @@
     }
   };
 
+  // src/lib/grokbot/ribbons.ts
+  function closestDistToSegment(ax, ay, bx, by, cx, cy) {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 < 1e-8 ? 0 : Math.max(0, Math.min(1, ((cx - ax) * dx + (cy - ay) * dy) / len2));
+    return Math.hypot(ax + t * dx - cx, ay + t * dy - cy);
+  }
+  function segmentHitsDisk(ax, ay, bx, by, cx, cy, r) {
+    return closestDistToSegment(ax, ay, bx, by, cx, cy) < r;
+  }
+  function shouldDrawRibbonSeg(midZ, ax, ay, bx, by, clip, stroke, hemisphere) {
+    if (hemisphere < 0) return midZ <= 0;
+    if (midZ <= 0) return false;
+    return !segmentHitsDisk(ax, ay, bx, by, clip.cx, clip.cy, clip.r + stroke * 0.55);
+  }
+
   // src/lib/grokbot/renderer.ts
   function drawPupil(ctx2, eye, side, lookX, lookY, alpha) {
     const inboard = side === "left" ? 1 : -1;
@@ -1868,12 +1885,19 @@
     const faceW = engine.t.faceW.value;
     const lookX = engine.t.gazeX.value + engine.t.yaw.value * 0.55;
     const lookY = engine.t.gazeY.value + engine.t.pitch.value * 0.45;
+    const lookScaleX = 1 + lookX * lookX * 0.03 - lookY * lookY * 0.015;
+    const lookScaleY = 1 + lookY * lookY * 0.025 - lookX * lookX * 0.018;
+    const rx = FACE_R * bodyScale * (1 / squash) * lookScaleX + 7;
+    const ry = FACE_R * bodyScale * squash * lookScaleY + 7;
     const bodyClip = {
       cx: lookX * 4,
       cy: lookY * 3.5,
-      r: FACE_R * bodyScale + 2
+      r: Math.max(rx, ry),
+      rx,
+      ry,
+      rot: lookX * 0.04
     };
-    drawTrail(ctx2, engine);
+    drawTrail(ctx2, engine, bodyClip);
     if (orbitW > 0.02) drawOrbits(ctx2, engine, orbitW, -1, bodyClip);
     if (streakW > 0.02) drawStreaks(ctx2, engine, streakW, -1, bodyClip);
     const hideBody = dotsW > 0.45;
@@ -2034,59 +2058,91 @@
     }
     ctx2.restore();
   }
-  function clipOutsideBody(ctx2, clip) {
+  var ribbonLayer = null;
+  function scratchLayer(w, h) {
+    if (typeof document === "undefined") return null;
+    if (!ribbonLayer || ribbonLayer.width !== w || ribbonLayer.height !== h) {
+      ribbonLayer = document.createElement("canvas");
+      ribbonLayer.width = w;
+      ribbonLayer.height = h;
+    }
+    return ribbonLayer;
+  }
+  function punchBodyHole(ctx2, clip) {
+    ctx2.save();
+    ctx2.globalCompositeOperation = "destination-out";
     ctx2.beginPath();
-    ctx2.rect(-4e3, -4e3, 8e3, 8e3);
-    ctx2.arc(clip.cx, clip.cy, clip.r, 0, Math.PI * 2, true);
-    ctx2.clip("evenodd");
+    ctx2.translate(clip.cx, clip.cy);
+    ctx2.rotate(clip.rot);
+    ctx2.ellipse(0, 0, clip.rx, clip.ry, 0, 0, Math.PI * 2);
+    ctx2.fill();
+    ctx2.restore();
+  }
+  function withFrontRibbonLayer(ctx2, clip, draw) {
+    const layer = scratchLayer(ctx2.canvas.width, ctx2.canvas.height);
+    if (!layer || typeof ctx2.getTransform !== "function") {
+      ctx2.save();
+      draw(ctx2);
+      ctx2.restore();
+      return;
+    }
+    const ltx = layer.getContext("2d");
+    if (!ltx) return;
+    const xf = ctx2.getTransform();
+    ltx.setTransform(1, 0, 0, 1, 0, 0);
+    ltx.clearRect(0, 0, layer.width, layer.height);
+    ltx.setTransform(xf);
+    draw(ltx);
+    punchBodyHole(ltx, clip);
+    ctx2.save();
+    ctx2.setTransform(1, 0, 0, 1, 0, 0);
+    ctx2.drawImage(layer, 0, 0);
+    ctx2.setTransform(xf);
+    ctx2.restore();
   }
   function drawOrbits(ctx2, engine, w, hemisphere, clip) {
-    const samples = 72;
-    ctx2.save();
-    if (hemisphere > 0) clipOutsideBody(ctx2, clip);
-    for (const o of engine.orbits) {
-      const pts = [];
-      for (let i = 0; i <= samples; i++) {
-        const a = i / samples * Math.PI * 2 + o.phase;
-        const x0 = Math.cos(a) * o.rx;
-        const y0 = Math.sin(a) * o.ry;
-        const z0 = 0;
-        const ct = Math.cos(o.tilt);
-        const st = Math.sin(o.tilt);
-        const y1 = y0 * ct - z0 * st;
-        const z1 = y0 * st + z0 * ct;
-        const cy = Math.cos(o.yaw);
-        const sy = Math.sin(o.yaw);
-        const x2 = x0 * cy + z1 * sy;
-        const z2 = -x0 * sy + z1 * cy;
-        pts.push({ x: x2, y: y1, z: z2 });
+    const paint = (target) => {
+      const samples = 72;
+      for (const o of engine.orbits) {
+        const pts = [];
+        for (let i = 0; i <= samples; i++) {
+          const a = i / samples * Math.PI * 2 + o.phase;
+          const x0 = Math.cos(a) * o.rx;
+          const y0 = Math.sin(a) * o.ry;
+          const z0 = 0;
+          const ct = Math.cos(o.tilt);
+          const st = Math.sin(o.tilt);
+          const y1 = y0 * ct - z0 * st;
+          const z1 = y0 * st + z0 * ct;
+          const cy = Math.cos(o.yaw);
+          const sy = Math.sin(o.yaw);
+          const x2 = x0 * cy + z1 * sy;
+          const z2 = -x0 * sy + z1 * cy;
+          pts.push({ x: x2, y: y1, z: z2 });
+        }
+        target.save();
+        target.lineCap = "round";
+        target.lineJoin = "round";
+        target.lineWidth = o.width;
+        target.globalAlpha = w * 0.92;
+        for (let i = 0; i < pts.length - 1; i++) {
+          const a = pts[i];
+          const b = pts[i + 1];
+          const midZ = (a.z + b.z) / 2;
+          if (!shouldDrawRibbonSeg(midZ, a.x, a.y, b.x, b.y, clip, o.width, hemisphere)) continue;
+          const u = i / (pts.length - 1);
+          const h = lerp(o.hueA, o.hueB, u);
+          target.beginPath();
+          target.strokeStyle = hueStroke(h, 0.95);
+          target.moveTo(a.x, a.y);
+          target.lineTo(b.x, b.y);
+          target.stroke();
+        }
+        target.restore();
       }
-      ctx2.save();
-      ctx2.lineCap = "round";
-      ctx2.lineJoin = "round";
-      ctx2.lineWidth = o.width;
-      ctx2.globalAlpha = w * 0.92;
-      const rim = clip.r + o.width * 0.6;
-      for (let i = 0; i < pts.length - 1; i++) {
-        const a = pts[i];
-        const b = pts[i + 1];
-        const midZ = (a.z + b.z) / 2;
-        const mx = (a.x + b.x) / 2;
-        const my = (a.y + b.y) / 2;
-        if (hemisphere < 0 && midZ > 2) continue;
-        if (hemisphere > 0 && midZ < -2) continue;
-        if (hemisphere > 0 && Math.hypot(mx - clip.cx, my - clip.cy) < rim) continue;
-        const u = i / (pts.length - 1);
-        const h = lerp(o.hueA, o.hueB, u);
-        ctx2.beginPath();
-        ctx2.strokeStyle = hueStroke(h, 0.95);
-        ctx2.moveTo(a.x, a.y);
-        ctx2.lineTo(b.x, b.y);
-        ctx2.stroke();
-      }
-      ctx2.restore();
-    }
-    ctx2.restore();
+    };
+    if (hemisphere > 0) withFrontRibbonLayer(ctx2, clip, paint);
+    else paint(ctx2);
   }
   function drawStreaks(ctx2, engine, w, hemisphere, clip) {
     if (hemisphere < 0) return;
@@ -2096,30 +2152,31 @@
       { y: -18, rot: -0.38, h0: 165, h1: 200, len: 120 },
       { y: -50, rot: -0.52, h0: 280, h1: 330, len: 110 }
     ];
-    ctx2.save();
-    clipOutsideBody(ctx2, clip);
-    ctx2.globalAlpha = w;
-    ctx2.lineCap = "round";
-    for (const s of streaks) {
-      ctx2.save();
-      ctx2.rotate(s.rot + Math.sin(t) * 0.04);
-      ctx2.translate(-20, s.y);
-      const g = ctx2.createLinearGradient(-s.len / 2, 0, s.len / 2, 0);
-      g.addColorStop(0, hueStroke(s.h0, 0));
-      g.addColorStop(0.25, hueStroke(s.h0, 0.95));
-      g.addColorStop(0.7, hueStroke(s.h1, 0.95));
-      g.addColorStop(1, hueStroke(s.h1, 0));
-      ctx2.strokeStyle = g;
-      ctx2.lineWidth = 6.5;
-      ctx2.beginPath();
-      ctx2.moveTo(-s.len / 2, 0);
-      ctx2.quadraticCurveTo(0, -18, s.len / 2, 8);
-      ctx2.stroke();
-      ctx2.restore();
-    }
-    ctx2.restore();
+    withFrontRibbonLayer(ctx2, clip, (target) => {
+      target.save();
+      target.globalAlpha = w;
+      target.lineCap = "round";
+      for (const s of streaks) {
+        target.save();
+        target.rotate(s.rot + Math.sin(t) * 0.04);
+        target.translate(-20, s.y);
+        const g = target.createLinearGradient(-s.len / 2, 0, s.len / 2, 0);
+        g.addColorStop(0, hueStroke(s.h0, 0));
+        g.addColorStop(0.25, hueStroke(s.h0, 0.95));
+        g.addColorStop(0.7, hueStroke(s.h1, 0.95));
+        g.addColorStop(1, hueStroke(s.h1, 0));
+        target.strokeStyle = g;
+        target.lineWidth = 6.5;
+        target.beginPath();
+        target.moveTo(-s.len / 2, 0);
+        target.quadraticCurveTo(0, -18, s.len / 2, 8);
+        target.stroke();
+        target.restore();
+      }
+      target.restore();
+    });
   }
-  function drawTrail(ctx2, engine) {
+  function drawTrail(ctx2, engine, _clip) {
     const tr = engine.trail;
     if (tr.length < 2) return;
     ctx2.save();
