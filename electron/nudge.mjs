@@ -141,6 +141,25 @@ export function sameChipSnapshot(a, b) {
   return agentChipKey(a) === agentChipKey(b);
 }
 
+export function ballHitRadius(box, faceScale, pad = 32) {
+  return Number(box || 0) * Number(faceScale || 0) + pad;
+}
+
+export function isNearBall(px, py, ball = { x: 0, y: 0 }, radius = 0) {
+  return Math.hypot(px - ball.x, py - ball.y) <= radius;
+}
+
+/** Ignore the window only when the cursor is not on the ball, chips, or an open dock. */
+export function shouldClickThrough({
+  drag = false,
+  dockOpen = false,
+  nearBall = false,
+  rendererLive = false,
+} = {}) {
+  if (drag || dockOpen || nearBall || rendererLive) return false;
+  return true;
+}
+
 export function parseInbox(raw) {
   try {
     const row = typeof raw === "string" ? JSON.parse(raw) : raw;

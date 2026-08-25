@@ -291,7 +291,10 @@ const PET_CSS = `
 .grok-stage #prefs button.dim { opacity: 0.62; }
 .grok-stage .whisper,
 .grok-stage .agents,
-.grok-stage .desk { pointer-events: auto; }
+.grok-stage .desk { pointer-events: none; }
+.grok-stage .whisper:not([hidden]),
+.grok-stage .agents button,
+.grok-stage .desk .chip { pointer-events: auto; }
 .grok-stage.open .dock { pointer-events: auto; }
 .grok-stage .presets { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .grok-stage .presets button {
@@ -633,6 +636,7 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     paintAgents();
     paintWhisper();
     paintBrief();
+    if (isHotNode(document.elementFromPoint(lastClientX, lastClientY))) interactOn();
   }
 
   function paintAgents() {
@@ -655,6 +659,8 @@ export function bootMacCompanion(opts: BootOptions = {}) {
       b.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
+        lastClientX = e.clientX;
+        lastClientY = e.clientY;
         dismissAgentChip(agent);
       });
       agentsEl.appendChild(b);
@@ -1077,18 +1083,48 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     paintBrief();
   });
 
-  if (pet) {
-    wrap.addEventListener("pointerenter", onFaceEnter);
-    wrap.addEventListener("pointerleave", onFaceLeave);
-    dock.addEventListener("pointerenter", onFaceEnter);
-    dock.addEventListener("pointerleave", onFaceLeave);
+  let lastClientX = 0;
+  let lastClientY = 0;
+
+  function isHotNode(el: EventTarget | null) {
+    if (!(el instanceof Element)) return false;
+    if (wrap.contains(el)) return true;
+    if (whisperEl && !whisperEl.hidden && whisperEl.contains(el)) return true;
+    if (el.closest("#agents button, #desk .chip, #whisper")) return true;
+    if (dockOpen && dock.contains(el)) return true;
+    return false;
   }
 
-  function onFaceEnter() {
+  function onHotEnter() {
     interactOn();
   }
-  function onFaceLeave() {
-    interactOff();
+
+  function onHotLeave(e: PointerEvent) {
+    if (isHotNode(e.relatedTarget)) return;
+    requestAnimationFrame(() => {
+      if (isHotNode(document.elementFromPoint(lastClientX, lastClientY))) {
+        interactOn();
+        return;
+      }
+      interactOff();
+    });
+  }
+
+  function onHotMove(e: PointerEvent) {
+    lastClientX = e.clientX;
+    lastClientY = e.clientY;
+  }
+
+  function onDockOver(e: PointerEvent) {
+    if (isHotNode(e.target)) onHotEnter();
+  }
+
+  if (pet) {
+    wrap.addEventListener("pointerenter", onHotEnter);
+    wrap.addEventListener("pointerleave", onHotLeave);
+    dock.addEventListener("pointerover", onDockOver);
+    dock.addEventListener("pointerout", onHotLeave);
+    window.addEventListener("pointermove", onHotMove, { passive: true });
   }
 
   function sizeCanvas() {
@@ -1607,10 +1643,11 @@ export function bootMacCompanion(opts: BootOptions = {}) {
     window.removeEventListener("pointerup", onWinUp, true);
     window.removeEventListener("mouseup", onWinUp, true);
     wrap.removeEventListener("contextmenu", onMenu);
-    wrap.removeEventListener("pointerenter", onFaceEnter);
-    wrap.removeEventListener("pointerleave", onFaceLeave);
-    dock.removeEventListener("pointerenter", onFaceEnter);
-    dock.removeEventListener("pointerleave", onFaceLeave);
+    wrap.removeEventListener("pointerenter", onHotEnter);
+    wrap.removeEventListener("pointerleave", onHotLeave);
+    dock.removeEventListener("pointerover", onDockOver);
+    dock.removeEventListener("pointerout", onHotLeave);
+    window.removeEventListener("pointermove", onHotMove);
     wheel.removeEventListener("pointerdown", onWheelDown);
     wheel.removeEventListener("pointermove", onWheelMove);
     if (typeof offCursor === "function") offCursor();

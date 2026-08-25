@@ -16,8 +16,10 @@ import { classifyPermOut, parsePermProbe, probePerms, resolvePerms, unwrapPermCm
 import { readFileSync } from "node:fs";
 import {
   agentChipKey,
+  ballHitRadius,
   bannersQuiet,
   isAgentChipDismissed,
+  isNearBall,
   nextNudge,
   overlayAgentId,
   overlayAsAgent,
@@ -27,6 +29,7 @@ import {
   parseMacScene,
   parseNudgeUrl,
   rememberAgentDismiss,
+  shouldClickThrough,
   shouldInjectOverlay,
   visibleAgentChips,
   waitKey,
@@ -267,6 +270,38 @@ test("overlayWhisper names the tool and session", () => {
   assert.equal(overlayWhisper({ tool: "Codex", name: "codex-remind-test" }), "Codex · codex-remind-test");
   assert.equal(overlayWhisper({ tool: "Codex", status: "waiting" }), "Codex · waiting");
   assert.equal(overlayWhisper({ tool: "Codex", name: "new-chat" }), "Codex · new-chat");
+});
+
+test("ball tap still opens the dock and color wheel; drag starts from the face", () => {
+  const shell = readFileSync(new URL("../src/lib/grokbot/pet-shell.ts", import.meta.url), "utf8");
+  const bundled = readFileSync(new URL("../mac/grokbot.js", import.meta.url), "utf8");
+  const main = readFileSync(new URL("../electron/main.mjs", import.meta.url), "utf8");
+  const down = shell.slice(shell.indexOf("const onDown"), shell.indexOf("const onMove"));
+  const downJs = bundled.slice(bundled.indexOf("const onDown"), bundled.indexOf("const onMove"));
+  assert.match(shell, /showDock\(!dockOpen\)/);
+  assert.match(bundled, /showDock\(!dockOpen\)/);
+  assert.match(shell, /:not\(\.open\) #wheel/);
+  assert.match(bundled, /:not\(\.open\) #wheel/);
+  assert.match(down, /dragStart/);
+  assert.match(downJs, /dragStart/);
+  assert.match(shell, /wrap\.addEventListener\("pointerdown"/);
+  assert.match(main, /shouldClickThrough/);
+  assert.match(main, /cursorNearBall/);
+  assert.match(shell, /\.agents,\n\.grok-stage \.desk \{ pointer-events: none/);
+  assert.match(shell, /\.agents button/);
+});
+
+test("click-through stays off on the ball and on chips", () => {
+  const ball = { x: 100, y: 100 };
+  const r = ballHitRadius(440, 0.24, 32);
+  assert.ok(isNearBall(100, 100, ball, r));
+  assert.ok(isNearBall(100 + r, 100, ball, r));
+  assert.equal(isNearBall(100 + r + 1, 100, ball, r), false);
+  assert.equal(shouldClickThrough({ nearBall: true, rendererLive: false }), false);
+  assert.equal(shouldClickThrough({ rendererLive: true, nearBall: false }), false);
+  assert.equal(shouldClickThrough({ drag: true }), false);
+  assert.equal(shouldClickThrough({ dockOpen: true }), false);
+  assert.equal(shouldClickThrough({}), true);
 });
 
 test("control dock never auto-opens from waiting or whisper", () => {

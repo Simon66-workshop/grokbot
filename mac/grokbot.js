@@ -1,6 +1,6 @@
 "use strict";
 (() => {
-  // ../../workspace/src/lib/grokbot/types.ts
+  // src/lib/grokbot/types.ts
   var PATH_N = 64;
   var EYE_N = 48;
   var FACE_R = 100;
@@ -8,7 +8,7 @@
   var GAZE_GAIN_X = 22;
   var GAZE_GAIN_Y = 14;
 
-  // ../../workspace/src/lib/grokbot/math.ts
+  // src/lib/grokbot/math.ts
   function clamp(v, a, b) {
     return Math.max(a, Math.min(b, v));
   }
@@ -89,7 +89,7 @@
     return out;
   }
 
-  // ../../workspace/src/lib/grokbot/expressions.ts
+  // src/lib/grokbot/expressions.ts
   var e = (x, y, w, h, deg, round = 1, alpha = 1) => ({
     x,
     y,
@@ -256,7 +256,7 @@
     return EXPRESSIONS[(id % 25 + 25) % 25];
   }
 
-  // ../../workspace/src/lib/grokbot/paths.ts
+  // src/lib/grokbot/paths.ts
   function stadiumPath(eye, n = EYE_N) {
     const pts = [];
     const hw = Math.max(0.4, eye.w);
@@ -346,7 +346,7 @@
     return resampleClosed(raw, PATH_N);
   }
 
-  // ../../workspace/src/lib/grokbot/shapes.ts
+  // src/lib/grokbot/shapes.ts
   function bodyForShape(shape, time = 0) {
     switch (shape) {
       case "circle":
@@ -365,7 +365,7 @@
     }
   }
 
-  // ../../workspace/src/lib/grokbot/demo.ts
+  // src/lib/grokbot/demo.ts
   var DEMO_CUES = [
     {
       at: 0,
@@ -593,7 +593,7 @@
     }
   ];
 
-  // ../../workspace/src/lib/grokbot/scenes.ts
+  // src/lib/grokbot/scenes.ts
   var SCENES = {
     work: {
       label: "Work",
@@ -654,7 +654,7 @@
     return v === "work" || v === "companion" || v === "demo";
   }
 
-  // ../../workspace/src/lib/grokbot/color.ts
+  // src/lib/grokbot/color.ts
   var GROK_BLUE = "#1b56f3";
   var INK = "#161513";
   var FACE_PRESETS = [
@@ -899,7 +899,7 @@
     ctx2.stroke();
   }
 
-  // ../../workspace/src/lib/grokbot/hysteresis.ts
+  // src/lib/grokbot/hysteresis.ts
   var MOOD_RANK = {
     idle: 0,
     look: 1,
@@ -947,7 +947,7 @@
     };
   }
 
-  // ../../workspace/src/lib/grokbot/engine.ts
+  // src/lib/grokbot/engine.ts
   var BOUNCE_DIRS = [
     { x: 0, y: 1, faces: [5, 3, 20, 10] },
     { x: 0, y: -0.42, faces: [4, 6, 7, 15] },
@@ -1801,7 +1801,7 @@
     }
   };
 
-  // ../../workspace/src/lib/grokbot/ribbons.ts
+  // src/lib/grokbot/ribbons.ts
   function closestDistToSegment(ax, ay, bx, by, cx, cy) {
     const dx = bx - ax;
     const dy = by - ay;
@@ -1818,7 +1818,7 @@
     return !segmentHitsDisk(ax, ay, bx, by, clip.cx, clip.cy, clip.r + stroke * 0.55);
   }
 
-  // ../../workspace/src/lib/grokbot/renderer.ts
+  // src/lib/grokbot/renderer.ts
   function drawPupil(ctx2, eye, side, lookX, lookY, alpha) {
     const inboard = side === "left" ? 1 : -1;
     const gx = clamp(lookX, -1, 1);
@@ -2236,7 +2236,7 @@
     ctx2.restore();
   }
 
-  // ../../workspace/src/lib/grokbot/sfx.ts
+  // src/lib/grokbot/sfx.ts
   var MUTE_KEY = "grok-sfx-muted";
   var ctx = null;
   var muted = readMuted();
@@ -2302,7 +2302,7 @@
     }
   }
 
-  // ../../workspace/src/lib/grokbot/sizes.ts
+  // src/lib/grokbot/sizes.ts
   var BOT_SIZES = {
     menubar: { box: 22, faceScale: 0.46, label: "Menu bar" },
     pet: { box: 200, faceScale: 0.3, label: "Small" },
@@ -2311,14 +2311,14 @@
     hero: { box: 720, faceScale: 0.22, label: "Hero" }
   };
 
-  // ../../workspace/src/lib/grokbot/registry.ts
+  // src/lib/grokbot/registry.ts
   var stack = [];
   function registerEngine(engine) {
     if (engine) stack.push(engine);
     else stack.pop();
   }
 
-  // ../../workspace/src/lib/grokbot/layout.ts
+  // src/lib/grokbot/layout.ts
   var PET_SIZES = {
     s: { box: 200, faceScale: 0.3, label: "S", hint: "Small \xB7 200" },
     m: { box: 320, faceScale: 0.33, label: "M", hint: "Medium \xB7 320" },
@@ -2412,7 +2412,7 @@
     return m >= 9 * 60 && m < 18 * 60;
   }
 
-  // ../../workspace/src/lib/grokbot/desk-core.js
+  // src/lib/grokbot/desk-core.js
   var EMPTY_POMO = {
     running: false,
     phase: "idle",
@@ -2571,7 +2571,7 @@
     return { snap, toggle, skip, tick, begin };
   }
 
-  // ../../workspace/src/lib/grokbot/pet-shell.ts
+  // src/lib/grokbot/pet-shell.ts
   var HOLD_MS = 220;
   var TAP_MS = 280;
   var DBL_MS = 340;
@@ -2788,7 +2788,10 @@
 .grok-stage #prefs button.dim { opacity: 0.62; }
 .grok-stage .whisper,
 .grok-stage .agents,
-.grok-stage .desk { pointer-events: auto; }
+.grok-stage .desk { pointer-events: none; }
+.grok-stage .whisper:not([hidden]),
+.grok-stage .agents button,
+.grok-stage .desk .chip { pointer-events: auto; }
 .grok-stage.open .dock { pointer-events: auto; }
 .grok-stage .presets { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .grok-stage .presets button {
@@ -3098,6 +3101,7 @@
       paintAgents();
       paintWhisper();
       paintBrief();
+      if (isHotNode(document.elementFromPoint(lastClientX, lastClientY))) interactOn();
     }
     function paintAgents() {
       if (!agentsEl) return;
@@ -3119,6 +3123,8 @@
         b.addEventListener("click", (e2) => {
           e2.preventDefault();
           e2.stopPropagation();
+          lastClientX = e2.clientX;
+          lastClientY = e2.clientY;
           dismissAgentChip(agent);
         });
         agentsEl.appendChild(b);
@@ -3510,17 +3516,42 @@
       paintWhisper();
       paintBrief();
     });
-    if (pet) {
-      wrap.addEventListener("pointerenter", onFaceEnter);
-      wrap.addEventListener("pointerleave", onFaceLeave);
-      dock.addEventListener("pointerenter", onFaceEnter);
-      dock.addEventListener("pointerleave", onFaceLeave);
+    let lastClientX = 0;
+    let lastClientY = 0;
+    function isHotNode(el) {
+      if (!(el instanceof Element)) return false;
+      if (wrap.contains(el)) return true;
+      if (whisperEl && !whisperEl.hidden && whisperEl.contains(el)) return true;
+      if (el.closest("#agents button, #desk .chip, #whisper")) return true;
+      if (dockOpen && dock.contains(el)) return true;
+      return false;
     }
-    function onFaceEnter() {
+    function onHotEnter() {
       interactOn();
     }
-    function onFaceLeave() {
-      interactOff();
+    function onHotLeave(e2) {
+      if (isHotNode(e2.relatedTarget)) return;
+      requestAnimationFrame(() => {
+        if (isHotNode(document.elementFromPoint(lastClientX, lastClientY))) {
+          interactOn();
+          return;
+        }
+        interactOff();
+      });
+    }
+    function onHotMove(e2) {
+      lastClientX = e2.clientX;
+      lastClientY = e2.clientY;
+    }
+    function onDockOver(e2) {
+      if (isHotNode(e2.target)) onHotEnter();
+    }
+    if (pet) {
+      wrap.addEventListener("pointerenter", onHotEnter);
+      wrap.addEventListener("pointerleave", onHotLeave);
+      dock.addEventListener("pointerover", onDockOver);
+      dock.addEventListener("pointerout", onHotLeave);
+      window.addEventListener("pointermove", onHotMove, { passive: true });
     }
     function sizeCanvas() {
       const fit = (el, fallback) => {
@@ -3994,10 +4025,11 @@
       window.removeEventListener("pointerup", onWinUp, true);
       window.removeEventListener("mouseup", onWinUp, true);
       wrap.removeEventListener("contextmenu", onMenu);
-      wrap.removeEventListener("pointerenter", onFaceEnter);
-      wrap.removeEventListener("pointerleave", onFaceLeave);
-      dock.removeEventListener("pointerenter", onFaceEnter);
-      dock.removeEventListener("pointerleave", onFaceLeave);
+      wrap.removeEventListener("pointerenter", onHotEnter);
+      wrap.removeEventListener("pointerleave", onHotLeave);
+      dock.removeEventListener("pointerover", onDockOver);
+      dock.removeEventListener("pointerout", onHotLeave);
+      window.removeEventListener("pointermove", onHotMove);
       wheel.removeEventListener("pointerdown", onWheelDown);
       wheel.removeEventListener("pointermove", onWheelMove);
       if (typeof offCursor === "function") offCursor();
@@ -4024,6 +4056,6 @@
     };
   }
 
-  // ../../workspace/mac/companion.ts
+  // mac/companion.ts
   bootMacCompanion();
 })();

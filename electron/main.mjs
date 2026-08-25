@@ -15,7 +15,9 @@ import {
   NUDGE_MS,
   OVERLAY_MS,
   agentChipKey,
+  ballHitRadius,
   bannersQuiet,
+  isNearBall,
   nextNudge,
   overlayAgentId,
   overlayAsAgent,
@@ -23,6 +25,7 @@ import {
   overlayWhisper,
   parseInbox,
   parseNudgeUrl,
+  shouldClickThrough,
   shouldInjectOverlay,
   waitKey,
 } from "./nudge.mjs";
@@ -73,6 +76,7 @@ let dismissedPerms = new Set();
 let cachedGit = { at: 0, key: "", value: [] };
 let lastInboxMtime = 0;
 const dismissedChips = new Map();
+let rendererLive = false;
 const meetingGate = createGate({ enterMs: 0, exitMs: 16_000 });
 const focusGate = createGate({ enterMs: 8_000, exitMs: 16_000 });
 const quietGate = createGate({ enterMs: 0, exitMs: 15_000 });
@@ -234,6 +238,7 @@ function startDrag() {
     lastBtnCheck: 0,
   };
   win.setIgnoreMouseEvents(false);
+  applyClickThrough();
   drag.timer = setInterval(followDrag, 10);
   followDrag();
 }
@@ -278,6 +283,7 @@ function endDrag() {
     placeWindow(b.x, b.y, pickSide(b.x, b.y, a));
     savePos();
   }
+  applyClickThrough();
   return { moved };
 }
 
@@ -291,6 +297,22 @@ function ballScreen() {
   const [wx, wy] = win.getPosition();
   const o = layout.ball[side];
   return { x: wx + o.x, y: wy + o.y };
+}
+
+function cursorNearBall() {
+  if (!win || win.isDestroyed()) return false;
+  const p = screen.getCursorScreenPoint();
+  return isNearBall(p.x, p.y, ballScreen(), ballHitRadius(layout.box, layout.faceScale));
+}
+
+function applyClickThrough() {
+  if (!win || win.isDestroyed()) return;
+  const ignore = shouldClickThrough({
+    drag: Boolean(drag),
+    nearBall: cursorNearBall(),
+    rendererLive,
+  });
+  win.setIgnoreMouseEvents(ignore, { forward: true });
 }
 
 function applySize(id) {
@@ -517,6 +539,7 @@ function startCursor() {
     const nx = Math.max(-1, Math.min(1, (p.x - b.x) / 260));
     const ny = Math.max(-1, Math.min(1, (p.y - b.y) / 200));
     win.webContents.send("pet-cursor", nx, ny);
+    applyClickThrough();
   }, 32);
 }
 
@@ -1120,10 +1143,9 @@ ipcMain.on("pet-drag-start", () => startDrag());
 ipcMain.handle("pet-drag-end", () => endDrag());
 
 ipcMain.on("pet-click-through", (event, ignore) => {
-  if (drag) return;
-  const w = BrowserWindow.fromWebContents(event.sender);
-  if (!w) return;
-  w.setIgnoreMouseEvents(Boolean(ignore), { forward: true });
+  if (BrowserWindow.fromWebContents(event.sender) !== win) return;
+  rendererLive = !Boolean(ignore);
+  applyClickThrough();
 });
 
 ipcMain.on("pet-set-scene", (_e, next) => {
